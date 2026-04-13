@@ -1,0 +1,91 @@
+import type { ExportOptions, SearchFilters } from '../shared/ipc.js'
+
+const MAX_SEARCH_LIMIT = 200
+const MAX_EXPORT_MESSAGE_IDS = 5000
+const DEFAULT_SEARCH_LIMIT = 80
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function clampInt(n: unknown, min: number, max: number, fallback: number): number {
+  const x = typeof n === 'number' ? n : typeof n === 'string' ? Number(n) : NaN
+  if (!Number.isFinite(x)) return fallback
+  return Math.min(max, Math.max(min, Math.trunc(x)))
+}
+
+function positiveIntOrNull(n: unknown): number | null {
+  const x = typeof n === 'number' ? n : typeof n === 'string' ? Number(n) : NaN
+  if (!Number.isFinite(x)) return null
+  const t = Math.trunc(x)
+  return t > 0 ? t : null
+}
+
+/** IPC에서 넘어온 값을 `SearchFilters`로 정규화(상한·타입). */
+export function sanitizeSearchFilters(raw: unknown): SearchFilters {
+  const o = isPlainObject(raw) ? raw : {}
+  const query = typeof o.query === 'string' ? o.query : ''
+  const projectId = positiveIntOrNull(o.projectId)
+  const roleRaw = o.role
+  const role =
+    roleRaw === 'user' || roleRaw === 'assistant' || roleRaw === '' ? roleRaw : ''
+  const limit = clampInt(o.limit, 1, MAX_SEARCH_LIMIT, DEFAULT_SEARCH_LIMIT)
+  const excludeMeta = o.excludeMeta === false ? false : true
+  const excludeSubagents = o.excludeSubagents === true
+  const scopeRaw = o.scope
+  const scope =
+    scopeRaw === 'messages' || scopeRaw === 'plans' || scopeRaw === 'all' ? scopeRaw : undefined
+
+  const out: SearchFilters = {
+    query,
+    limit,
+    excludeMeta,
+    excludeSubagents,
+  }
+  if (projectId != null) out.projectId = projectId
+  if (role) out.role = role as 'user' | 'assistant'
+  if (scope) out.scope = scope
+  return out
+}
+
+export function sanitizeExportMessageIds(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return []
+  const out: number[] = []
+  for (const x of raw) {
+    const id = positiveIntOrNull(x)
+    if (id != null) out.push(id)
+    if (out.length >= MAX_EXPORT_MESSAGE_IDS) break
+  }
+  return out
+}
+
+export function sanitizeExportOptions(raw: unknown): ExportOptions {
+  if (!isPlainObject(raw)) return {}
+  return {
+    excludeMeta: raw.excludeMeta === false ? false : undefined,
+    excludeSubagents: raw.excludeSubagents === true ? true : undefined,
+  }
+}
+
+export function sanitizeSessionId(raw: unknown): number | null {
+  return positiveIntOrNull(raw)
+}
+
+export function sanitizePlanId(raw: unknown): number | null {
+  return positiveIntOrNull(raw)
+}
+
+export function sanitizeMessageId(raw: unknown): number | null {
+  return positiveIntOrNull(raw)
+}
+
+export function sanitizeTagIds(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return []
+  const out: number[] = []
+  for (const x of raw) {
+    const id = positiveIntOrNull(x)
+    if (id != null) out.push(id)
+    if (out.length >= 500) break
+  }
+  return out
+}
