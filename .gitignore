@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-electron
+release
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+
+# Optional local snapshots / dev assets (not used as runtime data sources)
+asstes/
