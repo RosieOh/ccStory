@@ -1,0 +1,30 @@
+name: Feature request
+description: 새 기능이나 개선 아이디어
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 해결하고 싶은 문제 / 배경
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 동작
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 대안으로 시도한 것 (선택)
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 관련 영역 (복수 선택 가능)
+      options:
+        - label: 인덱싱 / 파서
+        - label: 검색 (FTS)
+        - label: UI
+        - label: 패키징 / 배포
+        - label: 문서
