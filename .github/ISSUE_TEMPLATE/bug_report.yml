@@ -1,0 +1,49 @@
+name: Bug report
+description: 앱이 예상과 다르게 동작할 때
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        가능한 한 재현 단계와 환경을 적어 주세요.
+  - type: input
+    id: version
+    attributes:
+      label: 앱 버전 (package.json 또는 About)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 단계
+      description: 1. … 2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 / 스크린샷 (선택)
+      description: 터미널 출력이나 캡처가 있으면 첨부
