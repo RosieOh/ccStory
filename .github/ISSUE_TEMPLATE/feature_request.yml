@@ -1,6 +1,6 @@
 name: Feature request
 description: 새 기능이나 개선 아이디어
-labels: ['enhancement']
+labels: ['type: feat']
 body:
   - type: textarea
     id: problem
