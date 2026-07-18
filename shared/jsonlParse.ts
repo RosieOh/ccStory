@@ -6,12 +6,28 @@ export type ContentPart =
 /** dialog: 일반 대화 / meta: 권한·제목 등 시스템 메타 / other: 분류 어려움 */
 export type MessageClass = 'dialog' | 'meta' | 'other'
 
+/** Token usage extracted from an assistant line's `message.usage`. */
+export type UsageTokens = {
+  inputTokens: number | null
+  outputTokens: number | null
+  cacheReadTokens: number | null
+  cacheCreationTokens: number | null
+}
+
 export type ParsedLine = {
   role: string
   text: string
   contentKinds: string[]
   rawPreview: string
   messageClass: MessageClass
+  /** Epoch ms parsed from the line's ISO `timestamp`, or null when absent/unparsable. */
+  tsMs: number | null
+  /** Model id from `message.model` (assistant lines), or null. */
+  model: string | null
+  /** Token usage from `message.usage`, or null when the line carries none. */
+  usage: UsageTokens | null
+  /** `isSidechain` flag — Claude Code marks subagent/side-thread lines true. */
+  isSidechain: boolean
 }
 
 function truncate(s: string, max: number): string {
@@ -91,6 +107,39 @@ function textFromThinking(item: Record<string, unknown>): string {
   const text = item.text
   if (typeof text === 'string' && text.trim()) return `[thinking] ${text}`
   return '[thinking]'
+}
+
+function toIntOrNull(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  return Math.trunc(v)
+}
+
+/** Parse an ISO-8601 timestamp field to epoch ms; null when missing/invalid. */
+export function parseTimestampMs(v: unknown): number | null {
+  if (typeof v !== 'string' || !v.trim()) return null
+  const ms = Date.parse(v)
+  return Number.isFinite(ms) ? ms : null
+}
+
+/** Pull `{ input, output, cache_read, cache_creation }` tokens from a `usage` object. */
+export function extractUsage(usage: unknown): UsageTokens | null {
+  if (!usage || typeof usage !== 'object') return null
+  const u = usage as Record<string, unknown>
+  const out: UsageTokens = {
+    inputTokens: toIntOrNull(u.input_tokens),
+    outputTokens: toIntOrNull(u.output_tokens),
+    cacheReadTokens: toIntOrNull(u.cache_read_input_tokens),
+    cacheCreationTokens: toIntOrNull(u.cache_creation_input_tokens),
+  }
+  if (
+    out.inputTokens == null &&
+    out.outputTokens == null &&
+    out.cacheReadTokens == null &&
+    out.cacheCreationTokens == null
+  ) {
+    return null
+  }
+  return out
 }
 
 function inferRole(obj: Record<string, unknown>): string {
@@ -229,6 +278,10 @@ export function parseJsonlLine(line: string): ParsedLine | null {
       contentKinds: ['invalid_json'],
       rawPreview: truncate(trimmed, 200),
       messageClass: 'other',
+      tsMs: null,
+      model: null,
+      usage: null,
+      isSidechain: false,
     }
   }
 
@@ -236,12 +289,16 @@ export function parseJsonlLine(line: string): ParsedLine | null {
   const message = obj.message
   let text = ''
   let contentKinds: string[] = []
+  let model: string | null = null
+  let usage: UsageTokens | null = null
 
   if (message && typeof message === 'object') {
-    const m = message as { content?: unknown }
+    const m = message as { content?: unknown; model?: unknown; usage?: unknown }
     const extracted = extractTextFromContent(m.content)
     text = extracted.text
     contentKinds = extracted.kinds
+    if (typeof m.model === 'string' && m.model.trim()) model = m.model
+    usage = extractUsage(m.usage)
   } else if (typeof obj.content !== 'undefined') {
     const extracted = extractTextFromContent(obj.content)
     text = extracted.text
@@ -252,6 +309,8 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     text.length > 0 ? truncate(text, 160) : truncate(trimmed, 200)
 
   const messageClass = classifyMessage(role, contentKinds, text || rawPreview)
+  const tsMs = parseTimestampMs(obj.timestamp)
+  const isSidechain = obj.isSidechain === true
 
-  return { role, text, contentKinds, rawPreview, messageClass }
+  return { role, text, contentKinds, rawPreview, messageClass, tsMs, model, usage, isSidechain }
 }
