@@ -3,6 +3,7 @@
 import type {
   ExportOptions,
   FavoriteRow,
+  IndexProgress,
   PlanListRow,
   ProjectRow,
   RecentSessionRow,
@@ -11,6 +12,7 @@ import type {
   SessionMessageRow,
   StatsPayload,
   TagRow,
+  TemplateRow,
   UnifiedSearchHit,
 } from '../shared/ipc'
 
@@ -32,7 +34,12 @@ export type VaultApi = {
   exportMessages: (messageIds: number[], format: 'md' | 'csv', opts?: ExportOptions) => Promise<string>
   sessionTranscript: (sessionId: number) => Promise<SessionMessageRow[]>
   recentSessions: (projectId?: number | null) => Promise<RecentSessionRow[]>
+  templatesList: () => Promise<TemplateRow[]>
+  templateCreate: (name: string, body: string) => Promise<number>
+  templateUpdate: (id: number, name: string, body: string) => Promise<void>
+  templateDelete: (id: number) => Promise<void>
   onIndexUpdated: (cb: () => void) => () => void
+  onIndexProgress: (cb: (p: IndexProgress) => void) => () => void
 }
 
 declare global {
