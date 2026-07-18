@@ -59,6 +59,8 @@ The parser in `shared/jsonlParse.ts` also tolerates:
 - Array items with types such as `tool_use` (serialized into text for indexing).
 - Invalid JSON lines (indexed with minimal metadata where possible).
 
+It additionally lifts **line-level metadata** into `ParsedLine`: `tsMs` (from ISO `timestamp`), `model` and token `usage` (from `message.model` / `message.usage` on assistant lines), and `isSidechain`. These feed the schema-v4 `messages` columns and the usage analytics in the Stats tab. `parseTimestampMs` and `extractUsage` are exported and unit-tested.
+
 ### Content kinds (PoC / runtime)
 
 Run `npm run poc` to print aggregated `contentKinds` from your machine. Extend the table below as new kinds appear.
@@ -75,16 +77,22 @@ Run `npm run poc` to print aggregated `contentKinds` from your machine. Extend t
 
 - `projects` — one row per Claude project folder (slug).
 - `sessions` — one row per `*.jsonl` file; `file_mtime_ms` drives incremental re-index.
-- `messages` — one row per parsed JSONL line with text body and `message_class` (`dialog` \| `meta` \| `other`) for filtering noisy system lines (permission mode, titles, etc.).
+- `messages` — one row per parsed JSONL line with text body and `message_class` (`dialog` \| `meta` \| `other`) for filtering noisy system lines (permission mode, titles, etc.). **Schema v4** adds per-line metadata: `ts_ms` (epoch ms from the line `timestamp`), `model`, token usage (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`), and `is_sidechain`. Upgrading from an older DB clears `sessions` once so a full reindex repopulates these columns (mtime-skip would otherwise leave them NULL).
 - `messages_fts` — FTS5 external content table on `messages.body` with triggers for insert/update/delete.
 - `plan_files` — one row per plan Markdown file under the plans root; `file_mtime_ms` drives incremental re-index; `title` from first `#` heading or filename.
 - `plan_files_fts` — FTS5 external content on `plan_files` (`title`, `body`) with the same trigger pattern as `messages_fts`.
 - `favorites` — `message_id` + timestamp.
 - `tags`, `message_tags` — many-to-many tagging.
+- `templates` — reusable prompt bodies with `{{variable}}` placeholders (name/body/timestamps).
+- `projects.tool` — source tool id (`claude` \| `codex` \| …) set by the indexing adapter.
+
+## Tool adapters
+
+`electron/adapters.ts` defines a `ToolAdapter` (id, label, root, `isAvailable`, `listProjects`, `listSessions`). `getAvailableAdapters()` returns every adapter whose data dir exists — currently the **Claude Code** adapter (`~/.claude/projects`) and a best-effort **Codex CLI** adapter (`~/.codex/sessions`, namespaced slugs, inert when absent). The indexer (`indexAdapterProject`) tags each project with the adapter id and parses sessions with the shared JSONL parser. Non-Claude adapters currently index on startup / manual reindex (the live watcher covers the Claude + plans roots).
 
 ## Search
 
-- Primary: SQLite FTS5 with per-token prefix match (`"token"* OR ...`).
+- Primary: SQLite FTS5. `buildFtsQuery(raw, matchMode)` supports `any` (OR prefix tokens), `all` (AND prefix tokens), and `phrase` (whole query as one exact phrase); `"quoted groups"` are always exact phrases. `sort` (`relevance` \| `newest` \| `oldest`) and a `sinceMs`/`untilMs` range filter operate on `messages.ts_ms` (plan hits use `file_mtime_ms`). Hits carry `tsMs` for display and cross-scope time interleaving.
 - On FTS syntax errors or engine issues, fallback: SQL `LIKE` on `messages.body`.
 - **Plans**: separate FTS on `plan_files_fts`; `SearchFilters.scope` is `messages` \| `plans` \| `all`. Unified results use a discriminated union (`hitType: 'message' \| 'plan'`). Full plan bodies are loaded on demand via `planBody(planId)` to avoid huge payloads in the hit list.
 - **`scope: 'all'` ordering**: message and plan hits use **different FTS5 BM25 scales**, so results are **not interleaved by a single score**. The app returns **all message hits (sorted by message rank)** then **all plan hits (sorted by plan rank)** for stable, explainable sections.
@@ -100,8 +108,8 @@ See `shared/ipc.ts` for channel names and DTOs. Main implements handlers; preloa
 
 ## Incremental indexing
 
-- Full scan on startup: walk projects, index each JSONL whose `mtime` changed vs `sessions.file_mtime_ms`; walk plans root and upsert each `*.md` vs `plan_files.file_mtime_ms`.
-- Live updates: `chokidar` watches `**/*.jsonl` under the projects root and `**/*.md` under the plans root. JSONL paths go through `indexSinglePath`; Markdown under the plans root goes through `indexPlanSinglePath`. `unlink` on a plan file removes its `plan_files` row.
+- Full scan on startup: walk projects, index each JSONL whose `mtime` changed vs `sessions.file_mtime_ms`; walk plans root and upsert each `*.md` vs `plan_files.file_mtime_ms`. After indexing, `pruneMissingProjectsAndSessions` deletes rows whose backing file/dir is gone (messages + FTS cascade).
+- Live updates: `chokidar` **v4 removed glob support**, so the watcher subscribes to the two **root directories** (`~/.claude/projects`, `~/.claude/plans`) recursively and filters by extension in the dispatch handler (`node_modules` / `.git` / `__pycache__` subtrees are ignored). JSONL paths go through `indexSinglePath`; Markdown under the plans root goes through `indexPlanSinglePath`. `unlink` on a plan file removes its `plan_files` row.
 
 ## Packaging
 
