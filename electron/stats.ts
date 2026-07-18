@@ -60,15 +60,57 @@ export function computeStats(db: DbHandle): StatsPayload {
     .slice(0, 30)
     .map(([token, count]) => ({ token, count }))
 
-  const activityByDay = db
+  const tokenRow = db
     .prepare(
-      `SELECT strftime('%Y-%m-%d', datetime(s.file_mtime_ms / 1000, 'unixepoch')) AS day, COUNT(*) AS count
-       FROM sessions s
-       GROUP BY day
-       ORDER BY day DESC
-       LIMIT 120`,
+      `SELECT
+         COALESCE(SUM(input_tokens), 0) AS input,
+         COALESCE(SUM(output_tokens), 0) AS output,
+         COALESCE(SUM(cache_read_tokens), 0) AS cacheRead,
+         COALESCE(SUM(cache_creation_tokens), 0) AS cacheCreation
+       FROM messages`,
     )
-    .all() as { day: string; count: number }[]
+    .get() as { input: number; output: number; cacheRead: number; cacheCreation: number }
+
+  const tokensByModel = db
+    .prepare(
+      `SELECT model,
+              COUNT(*) AS messages,
+              COALESCE(SUM(input_tokens), 0) AS input,
+              COALESCE(SUM(output_tokens), 0) AS output
+       FROM messages
+       WHERE model IS NOT NULL AND model != ''
+       GROUP BY model
+       ORDER BY (input + output) DESC, messages DESC
+       LIMIT 20`,
+    )
+    .all() as { model: string; messages: number; input: number; output: number }[]
+
+  // Prefer real per-message timestamps (schema v4+); fall back to session mtime
+  // for DBs indexed before timestamps were captured.
+  const tsCount = (db.prepare(`SELECT COUNT(*) AS c FROM messages WHERE ts_ms IS NOT NULL`).get() as {
+    c: number
+  }).c
+  const activityFromTimestamps = tsCount > 0
+  const activityByDay = activityFromTimestamps
+    ? (db
+        .prepare(
+          `SELECT strftime('%Y-%m-%d', datetime(ts_ms / 1000, 'unixepoch')) AS day, COUNT(*) AS count
+           FROM messages
+           WHERE ts_ms IS NOT NULL
+           GROUP BY day
+           ORDER BY day DESC
+           LIMIT 120`,
+        )
+        .all() as { day: string; count: number }[])
+    : (db
+        .prepare(
+          `SELECT strftime('%Y-%m-%d', datetime(s.file_mtime_ms / 1000, 'unixepoch')) AS day, COUNT(*) AS count
+           FROM sessions s
+           GROUP BY day
+           ORDER BY day DESC
+           LIMIT 120`,
+        )
+        .all() as { day: string; count: number }[])
 
   return {
     totalProjects,
@@ -77,5 +119,13 @@ export function computeStats(db: DbHandle): StatsPayload {
     messagesByRole,
     topTokens,
     activityByDay: activityByDay.reverse(),
+    tokenTotals: {
+      input: tokenRow.input,
+      output: tokenRow.output,
+      cacheRead: tokenRow.cacheRead,
+      cacheCreation: tokenRow.cacheCreation,
+    },
+    tokensByModel,
+    activityFromTimestamps,
   }
 }
