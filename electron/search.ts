@@ -5,23 +5,43 @@ import type {
   PlanHit,
   SearchFilters,
   SearchHit,
+  SortMode,
   UnifiedSearchHit,
 } from '../shared/ipc.js'
 
-function escapeFtsToken(t: string): string {
-  return t.replace(/"/g, '""').replace(/'/g, "''")
-}
+export type MatchMode = 'any' | 'all' | 'phrase'
 
-/** Build FTS5 prefix query: each token becomes token* OR ... */
-export function buildFtsQuery(raw: string): string {
-  const tokens = raw
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(escapeFtsToken)
-    .filter((t) => t.length > 0)
-  if (tokens.length === 0) return ''
-  return tokens.map((t) => `"${t}"*`).join(' OR ')
+/**
+ * Build an FTS5 query from a raw string.
+ * - `phrase`: the whole query is matched as one exact phrase.
+ * - `any` / `all`: `"quoted groups"` become exact phrases, bare words become
+ *   prefix matches (`word*`), joined by OR (`any`) or AND (`all`).
+ * Everything is wrapped in double quotes so FTS special characters stay literal;
+ * internal double quotes are stripped to keep the phrase well-formed.
+ */
+export function buildFtsQuery(raw: string, mode: MatchMode = 'any'): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+
+  if (mode === 'phrase') {
+    const cleaned = trimmed.replace(/"/g, ' ').replace(/\s+/g, ' ').trim()
+    return cleaned ? `"${cleaned}"` : ''
+  }
+
+  const terms: string[] = []
+  const re = /"([^"]+)"|(\S+)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(trimmed)) !== null) {
+    if (m[1] != null) {
+      const phrase = m[1].replace(/"/g, ' ').replace(/\s+/g, ' ').trim()
+      if (phrase) terms.push(`"${phrase}"`)
+    } else if (m[2] != null) {
+      const tok = m[2].replace(/"/g, '').trim()
+      if (tok) terms.push(`"${tok}"*`)
+    }
+  }
+  if (terms.length === 0) return ''
+  return terms.join(mode === 'all' ? ' AND ' : ' OR ')
 }
 
 function rowFilters(filters: SearchFilters): { sql: string; params: (string | number)[] } {
@@ -34,8 +54,23 @@ function rowFilters(filters: SearchFilters): { sql: string; params: (string | nu
   if (filters.excludeSubagents) {
     parts.push(`(s.rel_path NOT LIKE '%subagents%')`)
   }
+  if (typeof filters.sinceMs === 'number' && Number.isFinite(filters.sinceMs)) {
+    parts.push(`(m.ts_ms IS NOT NULL AND m.ts_ms >= ?)`)
+    params.push(Math.trunc(filters.sinceMs))
+  }
+  if (typeof filters.untilMs === 'number' && Number.isFinite(filters.untilMs)) {
+    parts.push(`(m.ts_ms IS NOT NULL AND m.ts_ms <= ?)`)
+    params.push(Math.trunc(filters.untilMs))
+  }
   if (!parts.length) return { sql: '', params: [] }
   return { sql: ` AND ${parts.join(' AND ')}`, params }
+}
+
+/** ORDER BY clause for a message search; NULL timestamps sort last for time sorts. */
+function messageOrderBy(sort: SortMode | undefined): string {
+  if (sort === 'newest') return 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms DESC, m.id DESC'
+  if (sort === 'oldest') return 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms ASC, m.id ASC'
+  return 'ORDER BY rank'
 }
 
 function mapRows(
@@ -52,6 +87,7 @@ function mapRows(
     snippet: string
     rank: number
     message_class: string
+    ts_ms: number | null
   }[],
 ): SearchHit[] {
   return rows.map((r) => ({
@@ -67,6 +103,7 @@ function mapRows(
     snippet: r.snippet,
     rank: r.rank,
     messageClass: (r.message_class as MessageClass) || 'dialog',
+    tsMs: r.ts_ms ?? null,
   }))
 }
 
@@ -75,7 +112,7 @@ export function searchMessages(db: DbHandle, filters: SearchFilters): SearchHit[
     return []
   }
   const limit = Math.min(filters.limit ?? 80, 200)
-  const fts = buildFtsQuery(filters.query)
+  const fts = buildFtsQuery(filters.query, filters.matchMode)
   const { sql: extraWhere, params: extraParams } = rowFilters(filters)
 
   const ftsParams: (string | number)[] = []
@@ -108,6 +145,7 @@ export function searchMessages(db: DbHandle, filters: SearchFilters): SearchHit[
       m.role,
       m.body,
       m.message_class AS message_class,
+      m.ts_ms AS ts_ms,
       snippet(messages_fts, 0, '«', '»', '…', 32) AS snippet,
       bm25(messages_fts) AS rank
     FROM messages_fts
@@ -115,7 +153,7 @@ export function searchMessages(db: DbHandle, filters: SearchFilters): SearchHit[
     JOIN sessions s ON s.id = m.session_id
     JOIN projects p ON p.id = s.project_id
     WHERE ${ftsWhere}
-    ORDER BY rank
+    ${messageOrderBy(filters.sort)}
     LIMIT ${limit}
   `
     try {
@@ -158,13 +196,18 @@ export function searchMessages(db: DbHandle, filters: SearchFilters): SearchHit[
       m.role,
       m.body,
       m.message_class AS message_class,
+      m.ts_ms AS ts_ms,
       substr(m.body, 1, 120) AS snippet,
       0 AS rank
     FROM messages m
     JOIN sessions s ON s.id = m.session_id
     JOIN projects p ON p.id = s.project_id
     WHERE ${likeWhere}
-    ORDER BY m.id DESC
+    ${filters.sort === 'newest'
+      ? 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms DESC, m.id DESC'
+      : filters.sort === 'oldest'
+        ? 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms ASC, m.id ASC'
+        : 'ORDER BY m.id DESC'}
     LIMIT ${limit}
   `
 
@@ -199,7 +242,22 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
     return []
   }
   const limit = Math.min(filters.limit ?? 80, 200)
-  const fts = buildFtsQuery(filters.query)
+  const fts = buildFtsQuery(filters.query, filters.matchMode)
+  const planDate: string[] = []
+  const planDateParams: number[] = []
+  if (typeof filters.sinceMs === 'number' && Number.isFinite(filters.sinceMs)) {
+    planDate.push(`pf.file_mtime_ms >= ?`)
+    planDateParams.push(Math.trunc(filters.sinceMs))
+  }
+  if (typeof filters.untilMs === 'number' && Number.isFinite(filters.untilMs)) {
+    planDate.push(`pf.file_mtime_ms <= ?`)
+    planDateParams.push(Math.trunc(filters.untilMs))
+  }
+  const planDateSql = planDate.length ? ` AND ${planDate.join(' AND ')}` : ''
+  const planOrder =
+    filters.sort === 'newest' || filters.sort === 'oldest'
+      ? `ORDER BY pf.file_mtime_ms ${filters.sort === 'newest' ? 'DESC' : 'ASC'}`
+      : 'ORDER BY rank'
 
   if (fts) {
     const ftsSql = `
@@ -212,12 +270,12 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
         bm25(plan_files_fts) AS rank
       FROM plan_files_fts
       JOIN plan_files pf ON pf.id = plan_files_fts.rowid
-      WHERE plan_files_fts MATCH ?
-      ORDER BY rank
+      WHERE plan_files_fts MATCH ?${planDateSql}
+      ${planOrder}
       LIMIT ${limit}
     `
     try {
-      const rows = db.prepare(ftsSql).all(fts) as Parameters<typeof mapPlanRows>[0]
+      const rows = db.prepare(ftsSql).all(fts, ...planDateParams) as Parameters<typeof mapPlanRows>[0]
       return mapPlanRows(rows)
     } catch {
       /* LIKE fallback */
@@ -244,8 +302,30 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
   return mapPlanRows(rows)
 }
 
-/** BM25 스케일이 메시지/플랜 FTS 간에 비교 불가 → 섹션 고정: 대화 전부(rank) 후 플랜 전부(rank) */
-export function orderedAllScopeHits(messageHits: MessageHit[], planHits: PlanHit[]): UnifiedSearchHit[] {
+/**
+ * `relevance` (default): BM25 scales aren't comparable across the message/plan
+ * FTS tables, so results stay sectioned — all messages (by rank) then all plans
+ * (by rank). For time sorts both scopes share an epoch-ms clock (message `tsMs`,
+ * plan `mtime`), so hits are interleaved by time; missing times sort last.
+ */
+export function orderedAllScopeHits(
+  messageHits: MessageHit[],
+  planHits: PlanHit[],
+  sort: SortMode = 'relevance',
+): UnifiedSearchHit[] {
+  if (sort === 'newest' || sort === 'oldest') {
+    const timeOf = (h: UnifiedSearchHit): number | null =>
+      h.hitType === 'plan' ? h.mtime : h.tsMs
+    const dir = sort === 'newest' ? -1 : 1
+    return [...messageHits, ...planHits].sort((a, b) => {
+      const ta = timeOf(a)
+      const tb = timeOf(b)
+      if (ta == null && tb == null) return 0
+      if (ta == null) return 1
+      if (tb == null) return -1
+      return (ta - tb) * dir
+    })
+  }
   const byMsgRank = (a: MessageHit, b: MessageHit) =>
     a.rank !== b.rank ? a.rank - b.rank : b.messageId - a.messageId
   const byPlanRank = (a: PlanHit, b: PlanHit) =>
@@ -265,7 +345,7 @@ export function unifiedSearch(db: DbHandle, filters: SearchFilters): UnifiedSear
   const plans = wantPlans ? searchPlans(db, filters) : []
 
   if (scope === 'all') {
-    return orderedAllScopeHits(messages as MessageHit[], plans as PlanHit[])
+    return orderedAllScopeHits(messages as MessageHit[], plans as PlanHit[], filters.sort)
   }
   if (scope === 'plans') return plans
   return messages
