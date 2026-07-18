@@ -2,8 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Neutral scale as CSS variables. Default = dark (Tailwind's stock zinc values).
+ * `.light` on <html> inverts the scale (950↔50) so dark backgrounds become light
+ * surfaces and light text becomes dark, flipping the whole UI with one class.
+ * Accent colors (emerald/sky/violet/amber) are intentionally left as-is.
+ */
+:root {
+  --z-50: 250 250 250;
+  --z-100: 244 244 245;
+  --z-200: 228 228 231;
+  --z-300: 212 212 216;
+  --z-400: 161 161 170;
+  --z-500: 113 113 122;
+  --z-600: 82 82 91;
+  --z-700: 63 63 70;
+  --z-800: 39 39 42;
+  --z-900: 24 24 27;
+  --z-950: 9 9 11;
+  --white: 255 255 255;
+  color-scheme: dark;
+}
+
+:root.light {
+  --z-50: 9 9 11;
+  --z-100: 24 24 27;
+  --z-200: 39 39 42;
+  --z-300: 63 63 70;
+  --z-400: 82 82 91;
+  --z-500: 113 113 122;
+  --z-600: 161 161 170;
+  --z-700: 212 212 216;
+  --z-800: 228 228 231;
+  --z-900: 244 244 245;
+  --z-950: 250 250 250;
+  --white: 24 24 27;
+  color-scheme: light;
+}
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+body {
+  background-color: rgb(var(--z-950));
+  color: rgb(var(--z-200));
 }
