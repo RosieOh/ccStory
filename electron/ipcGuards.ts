@@ -35,6 +35,16 @@ export function sanitizeSearchFilters(raw: unknown): SearchFilters {
   const scopeRaw = o.scope
   const scope =
     scopeRaw === 'messages' || scopeRaw === 'plans' || scopeRaw === 'all' ? scopeRaw : undefined
+  const matchModeRaw = o.matchMode
+  const matchMode =
+    matchModeRaw === 'any' || matchModeRaw === 'all' || matchModeRaw === 'phrase'
+      ? matchModeRaw
+      : undefined
+  const sortRaw = o.sort
+  const sort =
+    sortRaw === 'relevance' || sortRaw === 'newest' || sortRaw === 'oldest' ? sortRaw : undefined
+  const sinceMs = positiveIntOrNull(o.sinceMs)
+  const untilMs = positiveIntOrNull(o.untilMs)
 
   const out: SearchFilters = {
     query,
@@ -45,6 +55,10 @@ export function sanitizeSearchFilters(raw: unknown): SearchFilters {
   if (projectId != null) out.projectId = projectId
   if (role) out.role = role as 'user' | 'assistant'
   if (scope) out.scope = scope
+  if (matchMode) out.matchMode = matchMode
+  if (sort) out.sort = sort
+  if (sinceMs != null) out.sinceMs = sinceMs
+  if (untilMs != null) out.untilMs = untilMs
   return out
 }
 
@@ -76,6 +90,21 @@ export function sanitizePlanId(raw: unknown): number | null {
 }
 
 export function sanitizeMessageId(raw: unknown): number | null {
+  return positiveIntOrNull(raw)
+}
+
+export function sanitizeTemplateName(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .slice(0, 200)
+}
+
+export function sanitizeTemplateBody(raw: unknown): string {
+  // Cap at 200k chars to keep a single template row bounded.
+  return String(raw ?? '').slice(0, 200_000)
+}
+
+export function sanitizeTemplateId(raw: unknown): number | null {
   return positiveIntOrNull(raw)
 }
 
