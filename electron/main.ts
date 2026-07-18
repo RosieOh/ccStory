@@ -5,12 +5,19 @@ import { app, BrowserWindow, clipboard, ipcMain } from 'electron'
 import chokidar from 'chokidar'
 import { openVaultDb } from './db.js'
 import { defaultClaudePlansRoot, defaultClaudeProjectsRoot } from './claudeRoots.js'
-import { fullReindex, indexSinglePath } from './indexer.js'
+import { indexAdapterProject, indexSinglePath, pruneMissingProjectsAndSessions } from './indexer.js'
+import { getAvailableAdapters } from './adapters.js'
 import { fullReindexPlans, indexPlanSinglePath, isPathUnderPlansRoot } from './plansIndexer.js'
 import { unifiedSearch } from './search.js'
 import { computeStats } from './stats.js'
 import { IPC } from '../shared/ipc.js'
-import type { PlanListRow, RecentSessionRow, SessionMessageRow } from '../shared/ipc.js'
+import type {
+  IndexProgress,
+  PlanListRow,
+  RecentSessionRow,
+  SessionMessageRow,
+  TemplateRow,
+} from '../shared/ipc.js'
 import {
   sanitizeExportMessageIds,
   sanitizeExportOptions,
@@ -19,6 +26,9 @@ import {
   sanitizeSearchFilters,
   sanitizeSessionId,
   sanitizeTagIds,
+  sanitizeTemplateBody,
+  sanitizeTemplateId,
+  sanitizeTemplateName,
 } from './ipcGuards.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -34,6 +44,37 @@ function vaultDbPath(): string {
 
 function broadcastIndexUpdated() {
   mainWindow?.webContents.send(IPC.onIndexUpdated)
+}
+
+function broadcastIndexProgress(p: IndexProgress) {
+  mainWindow?.webContents.send(IPC.onIndexProgress, p)
+}
+
+const nextTick = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+/**
+ * Index projects one directory per macrotask so the window paints first and the
+ * event loop keeps flushing progress events instead of freezing on a big sync scan.
+ */
+async function runInitialIndex() {
+  if (!db) return
+  const jobs = getAvailableAdapters().flatMap((adapter) =>
+    adapter.listProjects().map((project) => ({ adapter, project })),
+  )
+  const total = jobs.length
+  for (let i = 0; i < jobs.length; i += 1) {
+    indexAdapterProject(db, jobs[i].adapter, jobs[i].project)
+    broadcastIndexProgress({ phase: 'projects', current: i + 1, total, label: jobs[i].project.displayName })
+    broadcastIndexUpdated()
+    await nextTick()
+  }
+  pruneMissingProjectsAndSessions(db)
+  broadcastIndexProgress({ phase: 'plans', current: 0, total: 1 })
+  await nextTick()
+  fullReindexPlans(db, plansRoot)
+  broadcastIndexProgress({ phase: 'done', current: total, total })
+  broadcastIndexUpdated()
+  startWatcher()
 }
 
 function createWindow() {
@@ -67,7 +108,7 @@ function registerIpc() {
     if (!db) return []
     const rows = db
       .prepare(
-        `SELECT p.id, p.slug, p.display_name AS displayName, p.root_path AS path,
+        `SELECT p.id, p.slug, p.display_name AS displayName, p.root_path AS path, p.tool AS tool,
                 COUNT(DISTINCT s.id) AS sessionCount,
                 MAX(s.file_mtime_ms) AS lastModified
          FROM projects p
@@ -80,6 +121,7 @@ function registerIpc() {
         slug: string
         displayName: string
         path: string
+        tool: string
         sessionCount: number
         lastModified: number | null
       }[]
@@ -88,6 +130,7 @@ function registerIpc() {
       slug: r.slug,
       displayName: r.displayName,
       path: r.path,
+      tool: r.tool ?? 'claude',
       sessionCount: r.sessionCount,
       lastModified: r.lastModified,
     }))
@@ -164,12 +207,62 @@ function registerIpc() {
       .all() as RecentSessionRow[]
   })
 
+  ipcMain.handle(IPC.templatesList, async () => {
+    if (!db) return []
+    return db
+      .prepare(
+        `SELECT id, name, body, created_at AS createdAt, updated_at AS updatedAt
+         FROM templates ORDER BY updated_at DESC`,
+      )
+      .all() as TemplateRow[]
+  })
+
+  ipcMain.handle(IPC.templateCreate, async (_e, rawName: unknown, rawBody: unknown) => {
+    if (!db) return 0
+    const name = sanitizeTemplateName(rawName) || '무제 템플릿'
+    const body = sanitizeTemplateBody(rawBody)
+    const now = Date.now()
+    const r = db
+      .prepare(`INSERT INTO templates (name, body, created_at, updated_at) VALUES (?, ?, ?, ?)`)
+      .run(name, body, now, now)
+    return Number(r.lastInsertRowid)
+  })
+
+  ipcMain.handle(IPC.templateUpdate, async (_e, rawId: unknown, rawName: unknown, rawBody: unknown) => {
+    if (!db) return
+    const id = sanitizeTemplateId(rawId)
+    if (id == null) return
+    const name = sanitizeTemplateName(rawName) || '무제 템플릿'
+    const body = sanitizeTemplateBody(rawBody)
+    db.prepare(`UPDATE templates SET name = ?, body = ?, updated_at = ? WHERE id = ?`).run(
+      name,
+      body,
+      Date.now(),
+      id,
+    )
+  })
+
+  ipcMain.handle(IPC.templateDelete, async (_e, rawId: unknown) => {
+    if (!db) return
+    const id = sanitizeTemplateId(rawId)
+    if (id == null) return
+    db.prepare(`DELETE FROM templates WHERE id = ?`).run(id)
+  })
+
   ipcMain.handle(IPC.reindex, async () => {
     if (!db) return { projects: 0, sessions: 0, planFiles: 0 }
-    const res = fullReindex(db, claudeRoot)
+    let projects = 0
+    let sessions = 0
+    for (const adapter of getAvailableAdapters()) {
+      for (const project of adapter.listProjects()) {
+        sessions += indexAdapterProject(db, adapter, project)
+        projects += 1
+      }
+    }
+    pruneMissingProjectsAndSessions(db)
     const plansRes = fullReindexPlans(db, plansRoot)
     broadcastIndexUpdated()
-    return { ...res, planFiles: plansRes.planFiles }
+    return { projects, sessions, planFiles: plansRes.planFiles }
   })
 
   ipcMain.handle(IPC.copyText, async (_e, text: string) => {
@@ -239,12 +332,13 @@ function registerIpc() {
 
   ipcMain.handle(IPC.messageTagsSet, async (_e, rawMsg: unknown, rawTagIds: unknown) => {
     if (!db) return
+    const database = db
     const messageId = sanitizeMessageId(rawMsg)
     if (messageId == null) return
     const tagIds = sanitizeTagIds(rawTagIds)
-    const tx = db.transaction(() => {
-      db.prepare(`DELETE FROM message_tags WHERE message_id = ?`).run(messageId)
-      const ins = db.prepare(`INSERT OR IGNORE INTO message_tags (message_id, tag_id) VALUES (?, ?)`)
+    const tx = database.transaction(() => {
+      database.prepare(`DELETE FROM message_tags WHERE message_id = ?`).run(messageId)
+      const ins = database.prepare(`INSERT OR IGNORE INTO message_tags (message_id, tag_id) VALUES (?, ?)`)
       for (const tid of tagIds) {
         ins.run(messageId, tid)
       }
@@ -261,6 +355,9 @@ function registerIpc() {
         messagesByRole: [],
         topTokens: [],
         activityByDay: [],
+        tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
+        tokensByModel: [],
+        activityFromTimestamps: false,
       }
     }
     return computeStats(db)
@@ -319,9 +416,12 @@ function registerIpc() {
 }
 
 function startWatcher() {
-  const patterns = [path.join(claudeRoot, '**', '*.jsonl'), path.join(plansRoot, '**', '*.md')]
-  const watcher = chokidar.watch(patterns, {
+  // chokidar v4 removed glob support: watch the roots directly (recursive by default)
+  // and filter by extension in the dispatch handler. Skip heavy/irrelevant subtrees.
+  const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__'])
+  const watcher = chokidar.watch([claudeRoot, plansRoot], {
     ignoreInitial: true,
+    ignored: (p: string) => p.split(/[\\/]/).some((seg) => IGNORE_DIRS.has(seg)),
     awaitWriteFinish: { stabilityThreshold: 400, pollInterval: 100 },
   })
 
@@ -355,11 +455,13 @@ app.whenReady().then(() => {
     fs.mkdirSync(plansRoot, { recursive: true })
   }
   db = openVaultDb(vaultDbPath())
-  fullReindex(db, claudeRoot)
-  fullReindexPlans(db, plansRoot)
   registerIpc()
-  startWatcher()
+  // Show the window first, then index in the background so a large ~/.claude
+  // does not delay first paint. The watcher starts once the initial pass finishes.
   createWindow()
+  mainWindow?.webContents.once('did-finish-load', () => {
+    void runInitialIndex()
+  })
 })
 
 app.on('window-all-closed', () => {
