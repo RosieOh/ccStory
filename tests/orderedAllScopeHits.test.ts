@@ -17,6 +17,7 @@ function msg(partial: Partial<MessageHit> & Pick<MessageHit, 'messageId' | 'rank
     snippet: partial.snippet ?? '',
     rank: partial.rank,
     messageClass: partial.messageClass ?? 'dialog',
+    tsMs: partial.tsMs ?? null,
   }
 }
 
@@ -47,5 +48,31 @@ describe('orderedAllScopeHits', () => {
     )
     expect((out[0] as MessageHit).messageId).toBe(2)
     expect((out[1] as MessageHit).messageId).toBe(1)
+  })
+
+  it('interleaves messages and plans by time for newest sort (missing times last)', () => {
+    const messages = [
+      msg({ messageId: 1, rank: 0, tsMs: 300 }),
+      msg({ messageId: 2, rank: 0, tsMs: null }),
+    ]
+    const plans = [plan({ planId: 10, rank: 0, mtime: 500 }), plan({ planId: 11, rank: 0, mtime: 100 })]
+    const out = orderedAllScopeHits(messages, plans, 'newest')
+    // 500(plan10) > 300(msg1) > 100(plan11) > null(msg2)
+    expect(out.map((h) => (h.hitType === 'plan' ? `p${h.planId}` : `m${h.messageId}`))).toEqual([
+      'p10',
+      'm1',
+      'p11',
+      'm2',
+    ])
+  })
+
+  it('orders oldest first for oldest sort', () => {
+    const out = orderedAllScopeHits(
+      [msg({ messageId: 1, rank: 0, tsMs: 300 })],
+      [plan({ planId: 10, rank: 0, mtime: 100 })],
+      'oldest',
+    )
+    expect(out[0].hitType).toBe('plan')
+    expect(out[1].hitType).toBe('message')
   })
 })
