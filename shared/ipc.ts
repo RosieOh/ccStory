@@ -16,7 +16,12 @@ export const IPC = {
   messageTagsGet: 'vault:messageTagsGet',
   sessionTranscript: 'vault:sessionTranscript',
   recentSessions: 'vault:recentSessions',
+  templatesList: 'vault:templatesList',
+  templateCreate: 'vault:templateCreate',
+  templateUpdate: 'vault:templateUpdate',
+  templateDelete: 'vault:templateDelete',
   onIndexUpdated: 'vault:onIndexUpdated',
+  onIndexProgress: 'vault:onIndexProgress',
 } as const
 
 export type MessageClass = 'dialog' | 'meta' | 'other'
@@ -33,6 +38,8 @@ export type ProjectRow = {
   path: string
   sessionCount: number
   lastModified: number | null
+  /** Source tool: 'claude' | 'codex' | … */
+  tool: string
 }
 
 export type SessionMessageRow = {
@@ -56,6 +63,8 @@ export type SearchHit = {
   snippet: string
   rank: number
   messageClass: MessageClass
+  /** Message timestamp (epoch ms) when available, else null. */
+  tsMs: number | null
 }
 
 export type SearchScope = 'messages' | 'plans' | 'all'
@@ -81,6 +90,9 @@ export type PlanListRow = {
   mtime: number
 }
 
+export type MatchMode = 'any' | 'all' | 'phrase'
+export type SortMode = 'relevance' | 'newest' | 'oldest'
+
 export type SearchFilters = {
   query: string
   projectId?: number
@@ -92,6 +104,14 @@ export type SearchFilters = {
   excludeSubagents?: boolean
   /** 검색 대상: 대화(세션) / 플랜 Markdown / 둘 다. 기본 `messages`. */
   scope?: SearchScope
+  /** 토큰 결합 방식: 아무거나(OR) / 모두(AND) / 구문(정확). 기본 `any`. */
+  matchMode?: MatchMode
+  /** 정렬: 관련도(FTS rank) / 최신 / 오래된. 기본 `relevance`. */
+  sort?: SortMode
+  /** 이 epoch(ms) 이후 메시지만 (메시지 timestamp 기준). */
+  sinceMs?: number
+  /** 이 epoch(ms) 이전 메시지만. */
+  untilMs?: number
 }
 
 export type RecentSessionRow = {
@@ -119,6 +139,13 @@ export type TagRow = {
   color: string | null
 }
 
+export type TokenTotals = {
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+}
+
 export type StatsPayload = {
   totalProjects: number
   totalSessions: number
@@ -126,10 +153,31 @@ export type StatsPayload = {
   messagesByRole: { role: string; count: number }[]
   topTokens: { token: string; count: number }[]
   activityByDay: { day: string; count: number }[]
+  /** Real token usage summed from assistant `message.usage` (schema v4+). */
+  tokenTotals: TokenTotals
+  /** Per-model breakdown of assistant turns and their token usage. */
+  tokensByModel: { model: string; messages: number; input: number; output: number }[]
+  /** True when `activityByDay` is derived from real message timestamps rather than file mtime. */
+  activityFromTimestamps: boolean
 }
 
 export type ReindexResult = {
   projects: number
   sessions: number
   planFiles: number
+}
+
+export type TemplateRow = {
+  id: number
+  name: string
+  body: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type IndexProgress = {
+  phase: 'projects' | 'plans' | 'done'
+  current: number
+  total: number
+  label?: string
 }
