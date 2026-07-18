@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 문서 (docs/)
+    url: https://github.com/RosieOh/ccStory/tree/main/docs
+    about: 아키텍처·PRD·ADR·로드맵은 먼저 docs/ 를 확인하세요.
