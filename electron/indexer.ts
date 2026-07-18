@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DbHandle } from './db.js'
-import { defaultClaudeProjectsRoot } from './claudeRoots.js'
+import type { DiscoveredProject, ToolAdapter } from './adapters.js'
 import { listAllJsonlForProject, readProjectDisplayTitle } from './claudeLayout.js'
 import { parseJsonlLine } from '../shared/jsonlParse.js'
 
@@ -23,17 +23,24 @@ export function listProjectDirs(claudeProjectsRoot: string): { slug: string; roo
     }))
 }
 
-export function upsertProject(db: DbHandle, slug: string, root: string): number {
-  const displayName = readProjectDisplayTitle(root, slug)
+export function upsertProject(
+  db: DbHandle,
+  slug: string,
+  root: string,
+  opts?: { tool?: string; displayName?: string },
+): number {
+  const tool = opts?.tool ?? 'claude'
+  const displayName = opts?.displayName ?? readProjectDisplayTitle(root, slug)
   const mtime = fs.statSync(root).mtimeMs
   db.prepare(
-    `INSERT INTO projects (slug, root_path, display_name, last_modified)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO projects (slug, root_path, display_name, last_modified, tool)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(slug) DO UPDATE SET
        root_path = excluded.root_path,
        display_name = excluded.display_name,
-       last_modified = excluded.last_modified`,
-  ).run(slug, root, displayName, Math.trunc(mtime))
+       last_modified = excluded.last_modified,
+       tool = excluded.tool`,
+  ).run(slug, root, displayName, Math.trunc(mtime), tool)
   const row = db.prepare(`SELECT id FROM projects WHERE slug = ?`).get(slug) as { id: number }
   return row.id
 }
@@ -57,8 +64,10 @@ export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoo
      VALUES (?, ?, ?, ?, 0)`,
   )
   const insMsg = db.prepare(
-    `INSERT INTO messages (session_id, line_index, role, body, content_kinds, raw_preview, message_class)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages
+       (session_id, line_index, role, body, content_kinds, raw_preview, message_class,
+        ts_ms, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, is_sidechain)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
 
   const tx = db.transaction(() => {
@@ -73,7 +82,23 @@ export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoo
       if (!parsed) continue
       const body = parsed.text || parsed.rawPreview || ''
       const kinds = JSON.stringify(parsed.contentKinds)
-      insMsg.run(sessionId, idx, parsed.role, body, kinds, parsed.rawPreview, parsed.messageClass)
+      const u = parsed.usage
+      insMsg.run(
+        sessionId,
+        idx,
+        parsed.role,
+        body,
+        kinds,
+        parsed.rawPreview,
+        parsed.messageClass,
+        parsed.tsMs,
+        parsed.model,
+        u?.inputTokens ?? null,
+        u?.outputTokens ?? null,
+        u?.cacheReadTokens ?? null,
+        u?.cacheCreationTokens ?? null,
+        parsed.isSidechain ? 1 : 0,
+      )
       idx += 1
     }
     db.prepare(`UPDATE sessions SET message_count = ? WHERE id = ?`).run(idx, sessionId)
@@ -82,18 +107,78 @@ export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoo
   tx()
 }
 
+/**
+ * Drop DB rows whose backing files/dirs no longer exist on disk. Session and
+ * message/FTS rows cascade via FK + triggers, so removing a stale project or
+ * session cleans up its descendants automatically.
+ */
+export function pruneMissingProjectsAndSessions(db: DbHandle): number {
+  let removed = 0
+  const sessions = db.prepare(`SELECT id, file_path FROM sessions`).all() as {
+    id: number
+    file_path: string
+  }[]
+  const delSession = db.prepare(`DELETE FROM sessions WHERE id = ?`)
+  for (const s of sessions) {
+    if (!fs.existsSync(s.file_path)) {
+      delSession.run(s.id)
+      removed += 1
+    }
+  }
+
+  const projects = db.prepare(`SELECT id, root_path FROM projects`).all() as {
+    id: number
+    root_path: string
+  }[]
+  const delProject = db.prepare(`DELETE FROM projects WHERE id = ?`)
+  for (const p of projects) {
+    if (!fs.existsSync(p.root_path)) {
+      delProject.run(p.id)
+      removed += 1
+    }
+  }
+  return removed
+}
+
+/** Index a single project directory; returns how many session files it holds. */
+export function indexProjectDir(db: DbHandle, dir: { slug: string; root: string }): number {
+  const pid = upsertProject(db, dir.slug, dir.root)
+  const files = listJsonlSessions(dir.root)
+  for (const f of files) {
+    indexSessionFileSync(db, pid, dir.root, f)
+  }
+  db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
+  return files.length
+}
+
+/**
+ * Index one project discovered by a tool adapter (Claude, Codex, …). Sessions are
+ * parsed with the shared JSONL parser; the project row is tagged with the tool id.
+ */
+export function indexAdapterProject(
+  db: DbHandle,
+  adapter: ToolAdapter,
+  discovered: DiscoveredProject,
+): number {
+  const pid = upsertProject(db, discovered.slug, discovered.root, {
+    tool: adapter.id,
+    displayName: discovered.displayName,
+  })
+  const files = adapter.listSessions(discovered.root)
+  for (const f of files) {
+    indexSessionFileSync(db, pid, discovered.root, f)
+  }
+  db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
+  return files.length
+}
+
 export function fullReindex(db: DbHandle, claudeRoot: string): { projects: number; sessions: number } {
   const projects = listProjectDirs(claudeRoot)
   let sessionCount = 0
   for (const p of projects) {
-    const pid = upsertProject(db, p.slug, p.root)
-    const files = listJsonlSessions(p.root)
-    for (const f of files) {
-      indexSessionFileSync(db, pid, p.root, f)
-      sessionCount += 1
-    }
-    db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
+    sessionCount += indexProjectDir(db, p)
   }
+  pruneMissingProjectsAndSessions(db)
   return { projects: projects.length, sessions: sessionCount }
 }
 
