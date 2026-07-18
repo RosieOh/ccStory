@@ -13,14 +13,18 @@
     "poc": "tsx scripts/poc-parse.ts",
     "postinstall": "electron-builder install-app-deps",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
     "chokidar": "^4.0.3",
     "fuse.js": "^7.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
@@ -31,6 +35,11 @@
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "typescript-eslint": "^8.19.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "tsx": "^4.19.2",
@@ -53,6 +62,17 @@
       "category": "public.app-category.developer-tools",
       "target": [
         "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        "AppImage"
       ]
     }
   }
