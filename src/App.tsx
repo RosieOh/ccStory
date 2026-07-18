@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
 import type {
   FavoriteRow,
+  IndexProgress,
+  MatchMode,
   MessageClass,
   PlanHit,
   PlanListRow,
@@ -9,8 +11,10 @@ import type {
   RecentSessionRow,
   SearchScope,
   SessionMessageRow,
+  SortMode,
   StatsPayload,
   TagRow,
+  TemplateRow,
   UnifiedSearchHit,
 } from '../shared/ipc'
 import {
@@ -20,8 +24,10 @@ import {
   isMessageHit,
   isPlanHit,
 } from './chatBubbleLayout'
+import { Markdown } from './Markdown'
+import { extractTemplateVariables, renderTemplate } from '../shared/templates'
 
-type Tab = 'search' | 'favorites' | 'stats' | 'export'
+type Tab = 'search' | 'favorites' | 'templates' | 'stats' | 'export'
 
 type TranscriptOpen = {
   sessionId: number
@@ -47,6 +53,32 @@ function sidebarPrimaryLabel(displayName: string): string {
   return parts[parts.length - 1] ?? displayName
 }
 
+type Command = { id: string; label: string; hint?: string; run: () => void }
+
+type DateRange = 'all' | '24h' | '7d' | '30d'
+
+/** Convert a date-range preset to an epoch-ms lower bound (null = no bound). */
+function sinceMsFor(range: DateRange): number | undefined {
+  const day = 24 * 60 * 60 * 1000
+  if (range === '24h') return Date.now() - day
+  if (range === '7d') return Date.now() - 7 * day
+  if (range === '30d') return Date.now() - 30 * day
+  return undefined
+}
+
+/** Short local timestamp for hit cards; empty string when unknown. */
+function formatTs(ms: number | null | undefined): string {
+  if (ms == null) return ''
+  return new Date(ms).toLocaleString()
+}
+
+/** 1_234_567 → "1.2M", 12_300 → "12.3K" — compact token counts for stat tiles. */
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
 function messageClassLabel(c: MessageClass): string | null {
   if (c === 'meta') return '메타'
   if (c === 'other') return '기타'
@@ -60,6 +92,9 @@ export default function App() {
   const [role, setRole] = useState<'user' | 'assistant' | ''>('')
   const [query, setQuery] = useState('')
   const [searchScope, setSearchScope] = useState<SearchScope>('messages')
+  const [matchMode, setMatchMode] = useState<MatchMode>('any')
+  const [sortMode, setSortMode] = useState<SortMode>('relevance')
+  const [dateRange, setDateRange] = useState<DateRange>('all')
   const [hits, setHits] = useState<UnifiedSearchHit[]>([])
   const [loading, setLoading] = useState(false)
   const [favorites, setFavorites] = useState<FavoriteRow[]>([])
@@ -75,6 +110,24 @@ export default function App() {
   const [excludeSubagents, setExcludeSubagents] = useState(false)
   const [recentSessions, setRecentSessions] = useState<RecentSessionRow[]>([])
   const [recentPlans, setRecentPlans] = useState<PlanListRow[]>([])
+  const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const [activeResult, setActiveResult] = useState(-1)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
+    typeof localStorage !== 'undefined' && localStorage.getItem('vault-theme') === 'light'
+      ? 'light'
+      : 'dark',
+  )
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('light', theme === 'light')
+    try {
+      localStorage.setItem('vault-theme', theme)
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [theme])
 
   const searchParamsRef = useRef({
     query,
@@ -83,8 +136,21 @@ export default function App() {
     excludeMeta,
     excludeSubagents,
     searchScope,
+    matchMode,
+    sortMode,
+    dateRange,
   })
-  searchParamsRef.current = { query, projectId, role, excludeMeta, excludeSubagents, searchScope }
+  searchParamsRef.current = {
+    query,
+    projectId,
+    role,
+    excludeMeta,
+    excludeSubagents,
+    searchScope,
+    matchMode,
+    sortMode,
+    dateRange,
+  }
 
   const loadProjects = useCallback(async () => {
     const list = await window.vault.projectsList()
@@ -115,12 +181,15 @@ export default function App() {
         excludeMeta,
         excludeSubagents,
         scope: searchScope,
+        matchMode,
+        sort: sortMode,
+        sinceMs: sinceMsFor(dateRange),
       })
       setHits(raw)
     } finally {
       setLoading(false)
     }
-  }, [query, projectId, role, excludeMeta, excludeSubagents, searchScope])
+  }, [query, projectId, role, excludeMeta, excludeSubagents, searchScope, matchMode, sortMode, dateRange])
 
   const fuzzyHits = useMemo(() => {
     if (!query.trim() || hits.length === 0) return hits
@@ -152,6 +221,103 @@ export default function App() {
   }, [loadProjects])
 
   useEffect(() => {
+    const off = window.vault.onIndexProgress((p) => {
+      setIndexProgress(p.phase === 'done' ? null : p)
+      if (p.phase === 'done') void loadProjects()
+    })
+    return off
+  }, [loadProjects])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    setActiveResult(-1)
+  }, [query, searchScope, projectId, hits])
+
+  useEffect(() => {
+    if (tab !== 'search') return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (paletteOpen || transcriptOpen || planPreview) return
+      if (!fuzzyHits.length) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveResult((a) => Math.min(a + 1, fuzzyHits.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveResult((a) => Math.max(a <= 0 ? 0 : a - 1, 0))
+      } else if (e.key === 'Enter' && activeResult >= 0) {
+        const h = fuzzyHits[activeResult]
+        if (!h) return
+        if (isPlanHit(h)) {
+          setPlanPreview({ planId: h.planId, title: h.title, filePath: h.filePath })
+        } else {
+          setTranscriptOpen({
+            sessionId: h.sessionId,
+            sessionFile: h.sessionFile,
+            projectLabel: h.projectName || h.projectSlug,
+            highlightLine: h.lineIndex,
+          })
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tab, fuzzyHits, activeResult, paletteOpen, transcriptOpen, planPreview])
+
+  const commands = useMemo<Command[]>(() => {
+    const tabCmds: Command[] = (
+      [
+        ['search', '검색'],
+        ['favorites', '즐겨찾기'],
+        ['templates', '템플릿'],
+        ['stats', '통계'],
+        ['export', '보내기'],
+      ] as const
+    ).map(([k, label]) => ({ id: `tab:${k}`, label: `이동: ${label}`, hint: '탭', run: () => setTab(k) }))
+    const actions: Command[] = [
+      { id: 'proj:all', label: '프로젝트: 전체', hint: '필터', run: () => setProjectId(undefined) },
+      {
+        id: 'action:reindex',
+        label: '재인덱싱',
+        hint: '액션',
+        run: () => {
+          void window.vault.reindex()
+        },
+      },
+      {
+        id: 'action:focus-search',
+        label: '검색창 포커스',
+        hint: '액션',
+        run: () => {
+          setTab('search')
+          setTimeout(() => searchInputRef.current?.focus(), 0)
+        },
+      },
+    ]
+    const projCmds: Command[] = projects.map((p) => ({
+      id: `proj:${p.id}`,
+      label: `프로젝트: ${sidebarPrimaryLabel(p.displayName)}`,
+      hint: '필터',
+      run: () => {
+        setProjectId(p.id)
+        setTab('search')
+      },
+    }))
+    return [...tabCmds, ...actions, ...projCmds]
+  }, [projects])
+
+  useEffect(() => {
     const off = window.vault.onIndexUpdated(() => {
       void loadProjects()
       void loadRecentSessions()
@@ -170,6 +336,9 @@ export default function App() {
           excludeMeta: p.excludeMeta,
           excludeSubagents: p.excludeSubagents,
           scope: p.searchScope,
+          matchMode: p.matchMode,
+          sort: p.sortMode,
+          sinceMs: sinceMsFor(p.dateRange),
         })
         setHits(raw)
       })()
@@ -248,6 +417,30 @@ export default function App() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-900"
+            title="테마 전환"
+          >
+            {theme === 'dark' ? '라이트' : '다크'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-900"
+            title="명령 팔레트"
+          >
+            ⌘K
+          </button>
+          {indexProgress && (
+            <span className="flex items-center gap-2 text-xs text-zinc-400">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+              {indexProgress.phase === 'plans'
+                ? '플랜 인덱싱…'
+                : `인덱싱 ${indexProgress.current}/${indexProgress.total}`}
+            </span>
+          )}
+          <button
+            type="button"
             className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-900"
             onClick={async () => {
               const r = await window.vault.reindex()
@@ -272,6 +465,7 @@ export default function App() {
               [
                 ['search', '검색'],
                 ['favorites', '즐겨찾기'],
+                ['templates', '템플릿'],
                 ['stats', '통계'],
                 ['export', '보내기'],
               ] as const
@@ -309,7 +503,14 @@ export default function App() {
                 title={`${p.displayName}\n${p.path}`}
                 onClick={() => setProjectId(p.id)}
               >
-                <span className="block truncate">{sidebarPrimaryLabel(p.displayName)}</span>
+                <span className="flex items-center gap-1">
+                  <span className="block truncate">{sidebarPrimaryLabel(p.displayName)}</span>
+                  {p.tool && p.tool !== 'claude' ? (
+                    <span className="shrink-0 rounded bg-amber-900/60 px-1 text-[9px] uppercase text-amber-200">
+                      {p.tool}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="text-[10px] text-zinc-600">
                   세션 {p.sessionCount}
                   {p.lastModified ? ` · ${new Date(p.lastModified).toLocaleDateString()}` : ''}
@@ -327,6 +528,7 @@ export default function App() {
                   <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs text-zinc-400">
                     검색
                     <input
+                      ref={searchInputRef}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="키워드, 문장, 기억에 남는 단어…"
@@ -391,6 +593,67 @@ export default function App() {
                     />
                     서브에이전트 제외
                   </label>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-400">
+                  <div className="flex items-center gap-1.5">
+                    <span>정밀도</span>
+                    <div className="flex rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
+                      {(
+                        [
+                          ['any', '아무거나'],
+                          ['all', '모두'],
+                          ['phrase', '구문'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setMatchMode(value)}
+                          className={`rounded px-2 py-1 ${
+                            matchMode === value ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-1.5">
+                    정렬
+                    <select
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value as SortMode)}
+                      className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-white"
+                    >
+                      <option value="relevance">관련도</option>
+                      <option value="newest">최신순</option>
+                      <option value="oldest">오래된순</option>
+                    </select>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span>기간</span>
+                    <div className="flex rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
+                      {(
+                        [
+                          ['all', '전체'],
+                          ['24h', '24시간'],
+                          ['7d', '7일'],
+                          ['30d', '30일'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setDateRange(value)}
+                          className={`rounded px-2 py-1 ${
+                            dateRange === value ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 {searchScope !== 'messages' ? (
                   <p className="mt-2 text-xs text-amber-200/70">
@@ -481,13 +744,20 @@ export default function App() {
                     결과가 없습니다. 필터를 완화하거나 재인덱싱을 시도해 보세요.
                   </p>
                 )}
-                {fuzzyHits.map((h) =>
+                {fuzzyHits.map((h, i) =>
                   isPlanHit(h) ? (
-                    <PlanSearchHitCard key={`plan-${h.planId}`} h={h} onStatus={setStatus} />
+                    <PlanSearchHitCard
+                      key={`plan-${h.planId}`}
+                      h={h}
+                      active={i === activeResult}
+                      onStatus={setStatus}
+                    />
                   ) : (
                     <article
                       key={h.messageId}
-                      className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 shadow-sm"
+                      className={`rounded-lg border bg-zinc-900/40 p-4 shadow-sm ${
+                        i === activeResult ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-zinc-800'
+                      }`}
                     >
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div className="text-xs text-zinc-500">
@@ -498,6 +768,12 @@ export default function App() {
                           <span>{h.sessionFile}</span>
                           <span className="mx-1">·</span>
                           <span className="text-zinc-400">{h.role}</span>
+                          {h.tsMs ? (
+                            <>
+                              <span className="mx-1">·</span>
+                              <span className="text-zinc-600">{formatTs(h.tsMs)}</span>
+                            </>
+                          ) : null}
                           {messageClassLabel(h.messageClass) ? (
                             <span className="ml-1 rounded bg-zinc-800 px-1 py-px text-[10px] text-amber-200/90">
                               {messageClassLabel(h.messageClass)}
@@ -535,6 +811,17 @@ export default function App() {
                             }}
                           >
                             즐겨찾기
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-violet-800/80 bg-violet-950/40 px-2 py-1 text-xs text-violet-100 hover:bg-violet-900/50"
+                            onClick={async () => {
+                              const name = h.body.slice(0, 40).replace(/\s+/g, ' ').trim() || '템플릿'
+                              await window.vault.templateCreate(name, h.body)
+                              setStatus('템플릿으로 저장했습니다. 템플릿 탭에서 편집하세요.')
+                            }}
+                          >
+                            템플릿 저장
                           </button>
                           <label className="flex items-center gap-1 text-xs text-zinc-400">
                             <input
@@ -622,6 +909,8 @@ export default function App() {
             </div>
           )}
 
+          {tab === 'templates' && <TemplatesTab onStatus={setStatus} />}
+
           {tab === 'stats' && (
             <div className="h-full overflow-y-auto p-4 text-sm">
               <h2 className="mb-3 text-sm font-semibold text-white">사용 통계</h2>
@@ -647,7 +936,68 @@ export default function App() {
                     </ul>
                   </section>
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">자주 등장한 토큰</h3>
+                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">토큰 사용량 (실측)</h3>
+                    {stats.tokenTotals.input + stats.tokenTotals.output === 0 ? (
+                      <p className="text-xs text-zinc-500">
+                        토큰 사용량 데이터가 없습니다. 재인덱싱하면 어시스턴트 응답의 usage에서 수집됩니다.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {(
+                          [
+                            ['입력', stats.tokenTotals.input, 'text-emerald-300'],
+                            ['출력', stats.tokenTotals.output, 'text-sky-300'],
+                            ['캐시 읽기', stats.tokenTotals.cacheRead, 'text-violet-300'],
+                            ['캐시 생성', stats.tokenTotals.cacheCreation, 'text-amber-300'],
+                          ] as const
+                        ).map(([label, value, cls]) => (
+                          <div
+                            key={label}
+                            className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                          >
+                            <div className={`text-lg font-semibold ${cls}`}>
+                              {formatCompact(value)}
+                            </div>
+                            <div className="text-[11px] text-zinc-500">{label} 토큰</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                  {stats.tokensByModel.length > 0 && (
+                    <section className="md:col-span-2">
+                      <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">모델별 사용</h3>
+                      <div className="space-y-2">
+                        {(() => {
+                          const max = Math.max(
+                            1,
+                            ...stats.tokensByModel.map((m) => m.input + m.output),
+                          )
+                          return stats.tokensByModel.map((m) => {
+                            const total = m.input + m.output
+                            return (
+                              <div key={m.model}>
+                                <div className="mb-0.5 flex justify-between text-xs text-zinc-300">
+                                  <span className="font-mono">{m.model}</span>
+                                  <span className="text-zinc-500">
+                                    {m.messages}턴 · {formatCompact(total)} 토큰
+                                  </span>
+                                </div>
+                                <div className="h-2 overflow-hidden rounded bg-zinc-800">
+                                  <div
+                                    className="h-full rounded bg-emerald-600/70"
+                                    style={{ width: `${(total / max) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })
+                        })()}
+                      </div>
+                    </section>
+                  )}
+                  <section className="md:col-span-2">
+                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">자주 등장한 단어</h3>
                     <div className="flex flex-wrap gap-2">
                       {stats.topTokens.map((t) => (
                         <span
@@ -661,15 +1011,28 @@ export default function App() {
                     </div>
                   </section>
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">세션 수정일 기준 활동</h3>
-                    <div className="max-h-48 overflow-auto text-xs text-zinc-400">
-                      {stats.activityByDay.map((d) => (
-                        <div key={d.day} className="flex justify-between border-b border-zinc-900 py-1">
-                          <span>{d.day}</span>
-                          <span>{d.count}</span>
+                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">
+                      {stats.activityFromTimestamps ? '메시지 타임스탬프 기준 활동' : '세션 수정일 기준 활동'}
+                    </h3>
+                    {(() => {
+                      const max = Math.max(1, ...stats.activityByDay.map((d) => d.count))
+                      return (
+                        <div className="max-h-56 space-y-1 overflow-auto pr-1 text-xs text-zinc-400">
+                          {stats.activityByDay.map((d) => (
+                            <div key={d.day} className="flex items-center gap-2">
+                              <span className="w-20 shrink-0 font-mono text-[11px]">{d.day}</span>
+                              <div className="h-2 flex-1 overflow-hidden rounded bg-zinc-900">
+                                <div
+                                  className="h-full rounded bg-sky-700/70"
+                                  style={{ width: `${(d.count / max) * 100}%` }}
+                                />
+                              </div>
+                              <span className="w-10 shrink-0 text-right tabular-nums">{d.count}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )
+                    })()}
                   </section>
                 </div>
               )}
@@ -757,15 +1120,20 @@ export default function App() {
       {planPreview && (
         <PlanMarkdownModal open={planPreview} onClose={() => setPlanPreview(null)} />
       )}
+      {paletteOpen && (
+        <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
+      )}
     </div>
   )
 }
 
 function PlanSearchHitCard({
   h,
+  active,
   onStatus,
 }: {
   h: PlanHit
+  active?: boolean
   onStatus: (s: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -790,7 +1158,11 @@ function PlanSearchHitCard({
   }
 
   return (
-    <article className="rounded-lg border border-violet-900/50 bg-violet-950/20 p-4 shadow-sm">
+    <article
+      className={`rounded-lg border bg-violet-950/20 p-4 shadow-sm ${
+        active ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-violet-900/50'
+      }`}
+    >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-zinc-500">
           <span className="font-medium text-violet-300">플랜</span>
@@ -819,9 +1191,9 @@ function PlanSearchHitCard({
       <p className="mb-1 font-mono text-[10px] text-zinc-600">{h.filePath}</p>
       <p className="mb-2 text-sm text-amber-100/90">« {h.snippet} »</p>
       {expanded && body !== null ? (
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-3 text-xs text-zinc-200">
-          {body}
-        </pre>
+        <div className="max-h-64 overflow-auto rounded bg-black/40 p-3">
+          <Markdown>{body}</Markdown>
+        </div>
       ) : null}
     </article>
   )
@@ -908,11 +1280,7 @@ function PlanMarkdownModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {err && <p className="text-sm text-red-400">{err}</p>}
           {!err && !body && <p className="text-sm text-zinc-500">불러오는 중…</p>}
-          {!err && body ? (
-            <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-zinc-200">
-              {body}
-            </pre>
-          ) : null}
+          {!err && body ? <Markdown>{body}</Markdown> : null}
         </div>
       </div>
     </div>
@@ -929,6 +1297,7 @@ function SessionTranscriptModal({
   const [rows, setRows] = useState<SessionMessageRow[]>([])
   const [loadErr, setLoadErr] = useState('')
   const [showMeta, setShowMeta] = useState(false)
+  const [showMarkdown, setShowMarkdown] = useState(true)
   const highlightRef = useRef<HTMLDivElement | null>(null)
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
 
@@ -1012,10 +1381,20 @@ function SessionTranscriptModal({
             <p className="mt-1 text-xs text-zinc-500">
               한 JSONL 세션의 인덱스 순서 (최대 25,000줄) · Esc 로 닫기
             </p>
-            <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
-              <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} />
-              메타 줄 표시 (권한·제목 등)
-            </label>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+                <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} />
+                메타 줄 표시 (권한·제목 등)
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={showMarkdown}
+                  onChange={(e) => setShowMarkdown(e.target.checked)}
+                />
+                마크다운 렌더링
+              </label>
+            </div>
           </div>
           <div className="flex shrink-0 gap-2">
             <button
@@ -1078,9 +1457,15 @@ function SessionTranscriptModal({
                       복사
                     </button>
                   </div>
-                  <pre className="max-h-[min(70vh,32rem)] max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-zinc-200 [overflow-wrap:anywhere]">
-                    {m.body}
-                  </pre>
+                  {showMarkdown && m.messageClass === 'dialog' ? (
+                    <div className="max-h-[min(70vh,32rem)] max-w-full overflow-auto">
+                      <Markdown>{m.body}</Markdown>
+                    </div>
+                  ) : (
+                    <pre className="max-h-[min(70vh,32rem)] max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-zinc-200 [overflow-wrap:anywhere]">
+                      {m.body}
+                    </pre>
+                  )}
                 </div>
               </div>
             )
@@ -1139,6 +1524,260 @@ function TagEditor({
           {t.name}
         </button>
       ))}
+    </div>
+  )
+}
+
+function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+  const [q, setQ] = useState('')
+  const [active, setActive] = useState(0)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (!s) return commands
+    return commands.filter(
+      (c) => c.label.toLowerCase().includes(s) || (c.hint?.toLowerCase().includes(s) ?? false),
+    )
+  }, [q, commands])
+
+  useEffect(() => {
+    setActive(0)
+  }, [q])
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((a) => Math.min(a + 1, Math.max(0, filtered.length - 1)))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((a) => Math.max(a - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const c = filtered[active]
+      if (c) {
+        c.run()
+        onClose()
+      }
+    } else if (e.key === 'Escape') {
+      onClose()
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 p-4 pt-[12vh]"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="명령 팔레트"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="명령·프로젝트·탭 검색…  (Esc 닫기)"
+          className="w-full border-b border-zinc-800 bg-transparent px-4 py-3 text-sm text-white outline-none"
+        />
+        <ul className="max-h-80 overflow-y-auto py-1">
+          {filtered.length === 0 && (
+            <li className="px-4 py-3 text-xs text-zinc-500">일치하는 명령이 없습니다.</li>
+          )}
+          {filtered.map((c, i) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onMouseEnter={() => setActive(i)}
+                onClick={() => {
+                  c.run()
+                  onClose()
+                }}
+                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${
+                  i === active ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-900'
+                }`}
+              >
+                <span className="truncate">{c.label}</span>
+                {c.hint ? <span className="ml-3 shrink-0 text-[10px] text-zinc-500">{c.hint}</span> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
+  const [templates, setTemplates] = useState<TemplateRow[]>([])
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [name, setName] = useState('')
+  const [body, setBody] = useState('')
+  const [values, setValues] = useState<Record<string, string>>({})
+
+  const load = useCallback(async () => {
+    const list = await window.vault.templatesList()
+    setTemplates(list)
+    return list
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const variables = useMemo(() => extractTemplateVariables(body), [body])
+  const rendered = useMemo(() => renderTemplate(body, values), [body, values])
+
+  const startNew = () => {
+    setSelectedId(null)
+    setName('')
+    setBody('')
+    setValues({})
+  }
+
+  const openTemplate = (t: TemplateRow) => {
+    setSelectedId(t.id)
+    setName(t.name)
+    setBody(t.body)
+    setValues({})
+  }
+
+  const save = async () => {
+    if (!body.trim() && !name.trim()) return
+    if (selectedId == null) {
+      const id = await window.vault.templateCreate(name, body)
+      onStatus('템플릿을 만들었습니다.')
+      const list = await load()
+      const created = list.find((t) => t.id === id)
+      if (created) openTemplate(created)
+    } else {
+      await window.vault.templateUpdate(selectedId, name, body)
+      onStatus('템플릿을 저장했습니다.')
+      await load()
+    }
+  }
+
+  const remove = async () => {
+    if (selectedId == null) return
+    await window.vault.templateDelete(selectedId)
+    onStatus('템플릿을 삭제했습니다.')
+    startNew()
+    await load()
+  }
+
+  const copyRendered = () => {
+    void window.vault.copyText(rendered)
+    onStatus('채워진 프롬프트를 복사했습니다.')
+  }
+
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="w-64 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
+        <button
+          type="button"
+          onClick={startNew}
+          className="mb-3 w-full rounded-md bg-emerald-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+        >
+          + 새 템플릿
+        </button>
+        {templates.length === 0 && (
+          <p className="text-xs text-zinc-500">
+            아직 템플릿이 없습니다. 검색 결과의 「템플릿 저장」이나 위 버튼으로 만들 수 있습니다.
+          </p>
+        )}
+        <ul className="space-y-1">
+          {templates.map((t) => (
+            <li key={t.id}>
+              <button
+                type="button"
+                onClick={() => openTemplate(t)}
+                className={`w-full truncate rounded px-2 py-1.5 text-left text-xs ${
+                  selectedId === t.id ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-900'
+                }`}
+                title={t.name}
+              >
+                {t.name || '무제 템플릿'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="min-w-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="템플릿 이름"
+            className="min-w-[200px] flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white"
+          />
+          <button
+            type="button"
+            onClick={() => void save()}
+            className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+          >
+            저장
+          </button>
+          {selectedId != null && (
+            <button
+              type="button"
+              onClick={() => void remove()}
+              className="rounded-md border border-red-800/70 px-3 py-2 text-sm text-red-200 hover:bg-red-950/40"
+            >
+              삭제
+            </button>
+          )}
+        </div>
+        <label className="mb-1 block text-xs text-zinc-500">
+          본문 — <code className="text-violet-300">{'{{변수}}'}</code> 형태로 채울 자리를 표시하세요.
+        </label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder={'예) {{언어}}로 작성된 {{파일}}을 리뷰하고 개선점을 제안해줘.'}
+          className="h-48 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-xs text-zinc-100"
+        />
+        {variables.length > 0 && (
+          <section className="mt-4">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">변수 채우기</h3>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {variables.map((v) => (
+                <label key={v} className="flex flex-col gap-1 text-xs text-zinc-400">
+                  {v}
+                  <input
+                    value={values[v] ?? ''}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-sm text-white"
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
+        <section className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">미리보기</h3>
+            <button
+              type="button"
+              onClick={copyRendered}
+              className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+            >
+              채워서 복사
+            </button>
+          </div>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-800 bg-black/40 p-3 text-xs text-zinc-200">
+            {rendered || '본문을 입력하면 여기에 미리보기가 표시됩니다.'}
+          </pre>
+        </section>
+      </div>
     </div>
   )
 }
