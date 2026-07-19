@@ -1,6 +1,5 @@
 import path from 'node:path'
 import fs from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, clipboard, ipcMain } from 'electron'
 import chokidar from 'chokidar'
 import { openVaultDb } from './db.js'
@@ -31,7 +30,9 @@ import {
   sanitizeTemplateName,
 } from './ipcGuards.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// The Electron main bundle is emitted as CommonJS (dist-electron/main.cjs), so
+// __dirname is provided by Node's module wrapper — no import.meta.url shim needed.
+declare const __dirname: string
 
 let mainWindow: BrowserWindow | null = null
 let db: ReturnType<typeof openVaultDb> | null = null
@@ -85,7 +86,7 @@ function createWindow() {
     minHeight: 640,
     title: 'Claude Vault',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },

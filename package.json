@@ -4,8 +4,7 @@
   "author": "Claude Vault contributors",
   "description": "Local search and reuse for Claude Code conversation history",
   "license": "MIT",
-  "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && electron-builder",
