@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { extractUsage, parseJsonlLine, parseTimestampMs } from '../shared/jsonlParse'
+import {
+  extractUsage,
+  operationalLabel,
+  parseJsonlLine,
+  parseTimestampMs,
+  summarizeToolUse,
+} from '../shared/jsonlParse'
 
 describe('parseJsonlLine', () => {
   it('parses user text message', () => {
@@ -65,6 +71,69 @@ describe('parseJsonlLine', () => {
       message: { content: [{ type: 'text', text: 'hi' }] },
     })
     expect(parseJsonlLine(line)!.usage).toBeNull()
+  })
+})
+
+describe('bookkeeping lines (never stored as raw JSON)', () => {
+  it('labels a queue-operation line and hides it as meta', () => {
+    const line = JSON.stringify({
+      type: 'queue-operation',
+      operation: 'dequeue',
+      timestamp: '2026-07-14T07:45:46.811Z',
+      sessionId: '18722e4c',
+    })
+    const p = parseJsonlLine(line)!
+    expect(p.messageClass).toBe('meta')
+    expect(p.text).toBe('[대기열] dequeue')
+    expect(p.text).not.toContain('{')
+  })
+
+  it('keeps the session title readable', () => {
+    const line = JSON.stringify({ type: 'ai-title', aiTitle: '감염병 API 명세서 구현' })
+    const p = parseJsonlLine(line)!
+    expect(p.text).toBe('[제목] 감염병 API 명세서 구현')
+    expect(p.messageClass).toBe('meta')
+  })
+
+  it('labels unknown content-less types instead of dumping JSON', () => {
+    const p = parseJsonlLine(JSON.stringify({ type: 'brand-new-thing', foo: 1 }))!
+    expect(p.text).toBe('[brand-new-thing]')
+    expect(p.messageClass).toBe('meta')
+  })
+
+  it('leaves real dialog untouched', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+    })
+    const p = parseJsonlLine(line)!
+    expect(p.messageClass).toBe('dialog')
+    expect(p.text).toBe('hello')
+  })
+})
+
+describe('summarizeToolUse', () => {
+  it('renders tool calls as readable lines, not JSON', () => {
+    const out = summarizeToolUse('PowerShell', {
+      command: 'Get-ChildItem -Force',
+      description: 'List files',
+    })
+    expect(out).toBe('[도구] PowerShell · List files\ncommand: Get-ChildItem -Force')
+    expect(out).not.toContain('{')
+  })
+
+  it('keeps multi-line edit content searchable on its own line', () => {
+    const out = summarizeToolUse('Edit', { file_path: 'src/App.tsx', new_string: 'a\nb' })
+    expect(out).toContain('file_path: src/App.tsx')
+    expect(out).toContain('new_string:\na\nb')
+  })
+})
+
+describe('operationalLabel', () => {
+  it('summarizes known bookkeeping types', () => {
+    expect(operationalLabel({ mode: 'normal' }, 'mode')).toBe('[모드] normal')
+    expect(operationalLabel({}, 'file-history-snapshot')).toBe('[파일 스냅샷]')
+    expect(operationalLabel({ prNumber: 15, prUrl: 'http://x/1' }, 'pr-link')).toBe('[PR] #15 http://x/1')
   })
 })
 

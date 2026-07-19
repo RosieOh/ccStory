@@ -4,7 +4,7 @@ import Database from 'better-sqlite3'
 
 export type DbHandle = Database.Database
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 export function openVaultDb(dbFile: string): DbHandle {
   const dir = path.dirname(dbFile)
@@ -168,10 +168,11 @@ function migrate(db: DbHandle) {
     | { value: string }
     | undefined
   const v = row ? Number(row.value) : 0
-  if (v > 0 && v < 4) {
-    // Existing DBs predate per-message metadata. Clear sessions so the next
-    // full reindex repopulates the new columns (mtime-skip would otherwise
-    // leave them NULL). Messages/FTS rows cascade via FK + triggers.
+  if (v > 0 && v < SCHEMA_VERSION) {
+    // Any schema bump also changes what the parser stores (v4 added per-message
+    // metadata; v5 relabels bookkeeping lines and tool calls). Clear sessions so
+    // the next full reindex rewrites every row — mtime-skip would otherwise keep
+    // stale bodies. Messages/FTS rows cascade via FK + triggers.
     db.exec(`DELETE FROM sessions`)
   }
   if (v < SCHEMA_VERSION) {
