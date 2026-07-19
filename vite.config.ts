@@ -18,6 +18,10 @@ export default defineConfig({
             outDir: 'dist-electron',
             rollupOptions: {
               external: ['electron', 'better-sqlite3'],
+              // Emit CommonJS (.cjs): Electron loads the native CJS modules
+              // (electron, better-sqlite3) reliably from a CJS main; the ESM
+              // loader otherwise crashes preparsing those imports.
+              output: { format: 'cjs', entryFileNames: '[name].cjs' },
             },
           },
         },
@@ -29,6 +33,7 @@ export default defineConfig({
             outDir: 'dist-electron',
             rollupOptions: {
               external: ['electron'],
+              output: { format: 'cjs', entryFileNames: '[name].cjs' },
             },
           },
         },
