@@ -1298,13 +1298,19 @@ function SessionTranscriptModal({
   const [loadErr, setLoadErr] = useState('')
   const [showMeta, setShowMeta] = useState(false)
   const [showMarkdown, setShowMarkdown] = useState(true)
+  const [showToolResults, setShowToolResults] = useState(false)
   const highlightRef = useRef<HTMLDivElement | null>(null)
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
 
   const visibleRows = useMemo(() => {
-    if (showMeta) return rows
-    return rows.filter((m) => m.messageClass !== 'meta')
-  }, [rows, showMeta])
+    return rows.filter(
+      (m) =>
+        (showMeta || m.messageClass !== 'meta') &&
+        (showToolResults || m.role !== 'tool'),
+    )
+  }, [rows, showMeta, showToolResults])
+
+  const toolRowCount = useMemo(() => rows.filter((m) => m.role === 'tool').length, [rows])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1394,6 +1400,14 @@ function SessionTranscriptModal({
                 />
                 마크다운 렌더링
               </label>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={showToolResults}
+                  onChange={(e) => setShowToolResults(e.target.checked)}
+                />
+                도구 결과 표시{toolRowCount > 0 ? ` (${toolRowCount})` : ''}
+              </label>
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -1417,11 +1431,16 @@ function SessionTranscriptModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {loadErr && <p className="text-sm text-red-400">{loadErr}</p>}
           {!loadErr && rows.length === 0 && <p className="text-sm text-zinc-500">불러오는 중…</p>}
-          {!showMeta && rows.some((m) => m.messageClass === 'meta') && (
-            <p className="mb-2 text-[11px] text-zinc-500">
-              메타 줄 {rows.filter((m) => m.messageClass === 'meta').length}개 숨김
-            </p>
-          )}
+          {(() => {
+            const hiddenMeta = showMeta ? 0 : rows.filter((m) => m.messageClass === 'meta').length
+            const hiddenTools = showToolResults ? 0 : toolRowCount
+            if (!hiddenMeta && !hiddenTools) return null
+            const bits = [
+              hiddenMeta ? `메타 ${hiddenMeta}개` : '',
+              hiddenTools ? `도구 결과 ${hiddenTools}개` : '',
+            ].filter(Boolean)
+            return <p className="mb-2 text-[11px] text-zinc-500">{bits.join(' · ')} 숨김</p>
+          })()}
           {visibleRows.map((m) => {
             const isHi = m.lineIndex === open.highlightLine
             const align = chatAlignForDialog(m.role, m.messageClass)

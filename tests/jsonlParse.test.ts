@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  effectiveRole,
   extractUsage,
   operationalLabel,
   parseJsonlLine,
   parseTimestampMs,
+  stripHarnessNoise,
   summarizeToolUse,
 } from '../shared/jsonlParse'
 
@@ -109,6 +111,56 @@ describe('bookkeeping lines (never stored as raw JSON)', () => {
     const p = parseJsonlLine(line)!
     expect(p.messageClass).toBe('dialog')
     expect(p.text).toBe('hello')
+  })
+})
+
+describe('tool results are not attributed to the human', () => {
+  const toolResultLine = (text: string) =>
+    JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', content: [{ type: 'text', text }] }],
+      },
+    })
+
+  it('re-attributes a tool_result-only user message to the tool role', () => {
+    const p = parseJsonlLine(toolResultLine('File created successfully at: /tmp/a.ts'))!
+    expect(p.role).toBe('tool')
+    expect(p.messageClass).toBe('dialog')
+  })
+
+  it('keeps genuine user text as the user role', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: '이거 고쳐줘' }] },
+    })
+    expect(parseJsonlLine(line)!.role).toBe('user')
+  })
+
+  it('keeps mixed text + tool_result as the user role', () => {
+    expect(effectiveRole('user', ['text', 'tool_result'])).toBe('user')
+    expect(effectiveRole('assistant', ['tool_result'])).toBe('assistant')
+  })
+
+  it('strips the harness file-state note from results', () => {
+    const p = parseJsonlLine(
+      toolResultLine(
+        'File created successfully at: /tmp/a.ts (file state is current in your context — no need to Read it back)',
+      ),
+    )!
+    expect(p.text).toBe('File created successfully at: /tmp/a.ts')
+    expect(p.text).not.toContain('no need to Read it back')
+  })
+})
+
+describe('stripHarnessNoise', () => {
+  it('removes system-reminder blocks', () => {
+    expect(stripHarnessNoise('keep me<system-reminder>hidden\nstuff</system-reminder>')).toBe('keep me')
+  })
+
+  it('leaves ordinary text alone', () => {
+    expect(stripHarnessNoise('build ok')).toBe('build ok')
   })
 })
 
