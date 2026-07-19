@@ -55,6 +55,71 @@ const META_KINDS = new Set([
   'citations',
 ])
 
+/**
+ * Top-level `type` values that are Claude Code bookkeeping, not conversation
+ * (queue bookkeeping, file snapshots, mode switches…). These lines carry no
+ * `message.content`, so without special handling their raw JSON would be stored
+ * as the message body and shown as if it were dialog.
+ */
+const OPERATIONAL_TYPES = new Set([
+  'queue-operation',
+  'file-history-snapshot',
+  'file-history-delta',
+  'attachment',
+  'mode',
+  'frame-link',
+  'permission-mode',
+  'last-prompt',
+  'ai-title',
+  'pr-link',
+  'session-id',
+  'model-info',
+  'version-info',
+])
+
+function str(v: unknown): string {
+  return typeof v === 'string' ? v : ''
+}
+
+/** Short human-readable label for a content-less bookkeeping line. */
+export function operationalLabel(obj: Record<string, unknown>, type: string): string {
+  switch (type) {
+    case 'queue-operation': {
+      const op = str(obj.operation)
+      return op ? `[대기열] ${op}` : '[대기열]'
+    }
+    case 'file-history-snapshot':
+      return '[파일 스냅샷]'
+    case 'file-history-delta':
+      return '[파일 변경 기록]'
+    case 'attachment': {
+      const a = obj.attachment
+      const kind = a && typeof a === 'object' ? str((a as Record<string, unknown>).type) : ''
+      return kind ? `[첨부] ${kind}` : '[첨부]'
+    }
+    case 'mode': {
+      const m = str(obj.mode)
+      return m ? `[모드] ${m}` : '[모드]'
+    }
+    case 'frame-link':
+      return '[프레임 링크]'
+    case 'last-prompt':
+      return '[최근 프롬프트 참조]'
+    case 'ai-title': {
+      const t = str(obj.aiTitle) || str(obj.title)
+      return t ? `[제목] ${t}` : '[제목]'
+    }
+    case 'pr-link': {
+      const n = obj.prNumber
+      const url = str(obj.prUrl)
+      const num = typeof n === 'number' ? `#${n}` : ''
+      return `[PR] ${num} ${url}`.replace(/\s+/g, ' ').trim()
+    }
+    default:
+      return `[${type}]`
+  }
+}
+
 function textFromLastPromptPart(item: Record<string, unknown>): string | null {
   if (item.type !== 'last-prompt') return null
   const lp = item.lastPrompt
@@ -82,6 +147,35 @@ function summarizeMetaPart(item: Record<string, unknown>, t: string): string {
     default:
       return `[${t}]`
   }
+}
+
+/**
+ * Render a tool call as readable lines instead of a raw JSON dump, e.g.
+ *   [도구] Edit · Fix null check
+ *   file_path: src/App.tsx
+ *   new_string:
+ *   …
+ * Every value is still emitted verbatim, so the tool input stays searchable.
+ */
+export function summarizeToolUse(name: string, input: unknown): string {
+  if (typeof input === 'string') return `[도구] ${name}\n${input}`
+  if (!input || typeof input !== 'object') return `[도구] ${name}`
+  const rec = input as Record<string, unknown>
+  const desc = str(rec.description)
+  const lines: string[] = [desc ? `[도구] ${name} · ${desc}` : `[도구] ${name}`]
+  for (const [k, v] of Object.entries(rec)) {
+    if (k === 'description') continue
+    if (typeof v === 'string') {
+      lines.push(v.includes('\n') ? `${k}:\n${v}` : `${k}: ${v}`)
+    } else if (v == null) {
+      continue
+    } else if (typeof v === 'object') {
+      lines.push(`${k}: ${JSON.stringify(v)}`)
+    } else {
+      lines.push(`${k}: ${String(v)}`)
+    }
+  }
+  return lines.join('\n')
 }
 
 function textFromToolResult(item: Record<string, unknown>): string {
@@ -218,8 +312,7 @@ export function extractTextFromContent(content: unknown): {
         parts.push(summarizeMetaPart(rec, ts))
       } else if (ts === 'tool_use') {
         const name = typeof rec.name === 'string' ? rec.name : 'tool'
-        const input = rec.input
-        parts.push(`[tool_use:${name}] ${typeof input === 'string' ? input : JSON.stringify(input ?? {})}`)
+        parts.push(summarizeToolUse(name, rec.input))
       } else if (ts === 'tool_result') {
         parts.push(textFromToolResult(rec))
       } else if (ts === 'thinking') {
@@ -305,10 +398,26 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     contentKinds = extracted.kinds
   }
 
+  const topType = str(obj.type)
+  // A line with no extractable content is bookkeeping, not conversation. Give it
+  // a short label (never the raw JSON) and file it under `meta` so the default
+  // filters hide it from search results and the transcript.
+  let isBookkeeping = false
+  if (!text.trim() && topType && topType !== 'user' && topType !== 'assistant') {
+    text = operationalLabel(obj, topType)
+    if (!contentKinds.length) contentKinds = [topType]
+    isBookkeeping = true
+  } else if (!text.trim() && OPERATIONAL_TYPES.has(topType)) {
+    text = operationalLabel(obj, topType)
+    isBookkeeping = true
+  }
+
   const rawPreview =
     text.length > 0 ? truncate(text, 160) : truncate(trimmed, 200)
 
-  const messageClass = classifyMessage(role, contentKinds, text || rawPreview)
+  const messageClass = isBookkeeping
+    ? 'meta'
+    : classifyMessage(role, contentKinds, text || rawPreview)
   const tsMs = parseTimestampMs(obj.timestamp)
   const isSidechain = obj.isSidechain === true
 
