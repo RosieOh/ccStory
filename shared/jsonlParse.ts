@@ -185,14 +185,24 @@ function textFromToolResult(item: Record<string, unknown>): string {
     const bits: string[] = []
     for (const x of c) {
       if (!x || typeof x !== 'object') continue
-      const o = x as { type?: string; text?: string }
-      if (o.type === 'text' && typeof o.text === 'string') bits.push(o.text)
+      const o = x as { type?: string; text?: string; tool_name?: string }
+      if (o.type === 'text' && typeof o.text === 'string') {
+        bits.push(o.text)
+      } else if (o.type === 'tool_reference') {
+        // Result that only points back at a tool — label it instead of dumping
+        // the `{"type":"tool_result","tool_use_id":…}` envelope as the body.
+        bits.push(o.tool_name ? `[도구 결과] ${o.tool_name}` : '[도구 결과]')
+      } else if (typeof o.type === 'string') {
+        bits.push(`[${o.type}]`)
+      }
     }
     if (bits.length) return bits.join('\n')
   }
   const text = item.text
   if (typeof text === 'string') return text
-  return JSON.stringify(item)
+  // Fall back to the payload itself, never the tool_use_id envelope.
+  if (c != null) return typeof c === 'object' ? JSON.stringify(c) : String(c)
+  return '[도구 결과]'
 }
 
 function textFromThinking(item: Record<string, unknown>): string {
