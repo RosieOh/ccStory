@@ -4,7 +4,7 @@ import Database from 'better-sqlite3'
 
 export type DbHandle = Database.Database
 
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 export function openVaultDb(dbFile: string): DbHandle {
   const dir = path.dirname(dbFile)

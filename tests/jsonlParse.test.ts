@@ -112,6 +112,38 @@ describe('bookkeeping lines (never stored as raw JSON)', () => {
   })
 })
 
+describe('tool_result extraction', () => {
+  it('labels tool_reference results instead of dumping the envelope', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_013Z',
+            content: [{ type: 'tool_reference', tool_name: 'TodoWrite' }],
+          },
+        ],
+      },
+    })
+    const p = parseJsonlLine(line)!
+    expect(p.text).toBe('[도구 결과] TodoWrite')
+    expect(p.text).not.toContain('tool_use_id')
+  })
+
+  it('still returns plain text results verbatim', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', content: [{ type: 'text', text: 'build ok' }] }],
+      },
+    })
+    expect(parseJsonlLine(line)!.text).toBe('build ok')
+  })
+})
+
 describe('summarizeToolUse', () => {
   it('renders tool calls as readable lines, not JSON', () => {
     const out = summarizeToolUse('PowerShell', {
