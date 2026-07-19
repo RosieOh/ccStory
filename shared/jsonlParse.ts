@@ -178,7 +178,26 @@ export function summarizeToolUse(name: string, input: unknown): string {
   return lines.join('\n')
 }
 
+/**
+ * Remove harness boilerplate that is addressed to the model, not the reader:
+ * the "(file state is current…)" note appended to file-write results and any
+ * injected <system-reminder> blocks.
+ */
+export function stripHarnessNoise(text: string): string {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    .replace(/\s*\(file state is current in your context[^)]*\)/g, '')
+    .trim()
+}
+
 function textFromToolResult(item: Record<string, unknown>): string {
+  const cleaned = stripHarnessNoise(rawToolResultText(item))
+  // Never fall through to an empty body (e.g. a result that was only a
+  // <system-reminder>) — that would leave the raw line as the preview.
+  return cleaned || '[도구 결과]'
+}
+
+function rawToolResultText(item: Record<string, unknown>): string {
   const c = item.content
   if (typeof c === 'string') return c
   if (Array.isArray(c)) {
@@ -257,12 +276,29 @@ function inferRole(obj: Record<string, unknown>): string {
   return 'unknown'
 }
 
+/**
+ * Claude Code feeds tool output back through a `user` message (API convention),
+ * but it is tool output — not something the human typed. Re-attribute those
+ * lines to a `tool` role so the UI never renders them as the user's own words
+ * and the user/assistant role filter returns real prompts only.
+ */
+export function effectiveRole(role: string, contentKinds: string[]): string {
+  if (
+    role === 'user' &&
+    contentKinds.length > 0 &&
+    contentKinds.every((k) => k === 'tool_result')
+  ) {
+    return 'tool'
+  }
+  return role
+}
+
 export function classifyMessage(
   role: string,
   contentKinds: string[],
   body: string,
 ): MessageClass {
-  const dialogRoles = new Set(['user', 'assistant'])
+  const dialogRoles = new Set(['user', 'assistant', 'tool'])
   if (dialogRoles.has(role) && (contentKinds.includes('text') || contentKinds.includes('string'))) {
     return 'dialog'
   }
@@ -388,7 +424,7 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     }
   }
 
-  const role = inferRole(obj)
+  const rawRole = inferRole(obj)
   const message = obj.message
   let text = ''
   let contentKinds: string[] = []
@@ -425,6 +461,7 @@ export function parseJsonlLine(line: string): ParsedLine | null {
   const rawPreview =
     text.length > 0 ? truncate(text, 160) : truncate(trimmed, 200)
 
+  const role = effectiveRole(rawRole, contentKinds)
   const messageClass = isBookkeeping
     ? 'meta'
     : classifyMessage(role, contentKinds, text || rawPreview)
