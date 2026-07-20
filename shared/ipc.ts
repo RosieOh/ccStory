@@ -48,6 +48,8 @@ export type SessionMessageRow = {
   role: string
   body: string
   messageClass: MessageClass
+  /** Parsed `content_kinds` (e.g. ['tool_use']) so the UI can tell tool activity from prose. */
+  contentKinds: string[]
 }
 
 export type SearchHit = {
