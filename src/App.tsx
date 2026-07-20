@@ -55,6 +55,22 @@ function sidebarPrimaryLabel(displayName: string): string {
 
 type Command = { id: string; label: string; hint?: string; run: () => void }
 
+/**
+ * Tool activity = a tool call (`tool_use`) or a tool result (re-attributed to the
+ * `tool` role). Hidden by default so a session reads as the actual conversation.
+ */
+function isToolRow(m: SessionMessageRow): boolean {
+  return m.role === 'tool' || m.contentKinds.includes('tool_use')
+}
+
+/**
+ * Markdown is right for prose, but it mangles tool payloads: `__pycache__`
+ * becomes bold and Windows paths lose their backslashes. Render those verbatim.
+ */
+function shouldRenderMarkdown(m: SessionMessageRow): boolean {
+  return m.messageClass === 'dialog' && !isToolRow(m)
+}
+
 type DateRange = 'all' | '24h' | '7d' | '30d'
 
 /** Convert a date-range preset to an epoch-ms lower bound (null = no bound). */
@@ -1304,13 +1320,11 @@ function SessionTranscriptModal({
 
   const visibleRows = useMemo(() => {
     return rows.filter(
-      (m) =>
-        (showMeta || m.messageClass !== 'meta') &&
-        (showToolResults || m.role !== 'tool'),
+      (m) => (showMeta || m.messageClass !== 'meta') && (showToolResults || !isToolRow(m)),
     )
   }, [rows, showMeta, showToolResults])
 
-  const toolRowCount = useMemo(() => rows.filter((m) => m.role === 'tool').length, [rows])
+  const toolRowCount = useMemo(() => rows.filter(isToolRow).length, [rows])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1406,7 +1420,7 @@ function SessionTranscriptModal({
                   checked={showToolResults}
                   onChange={(e) => setShowToolResults(e.target.checked)}
                 />
-                도구 결과 표시{toolRowCount > 0 ? ` (${toolRowCount})` : ''}
+                도구 호출·결과 표시{toolRowCount > 0 ? ` (${toolRowCount})` : ''}
               </label>
             </div>
           </div>
@@ -1437,7 +1451,7 @@ function SessionTranscriptModal({
             if (!hiddenMeta && !hiddenTools) return null
             const bits = [
               hiddenMeta ? `메타 ${hiddenMeta}개` : '',
-              hiddenTools ? `도구 결과 ${hiddenTools}개` : '',
+              hiddenTools ? `도구 ${hiddenTools}개` : '',
             ].filter(Boolean)
             return <p className="mb-2 text-[11px] text-zinc-500">{bits.join(' · ')} 숨김</p>
           })()}
@@ -1476,7 +1490,7 @@ function SessionTranscriptModal({
                       복사
                     </button>
                   </div>
-                  {showMarkdown && m.messageClass === 'dialog' ? (
+                  {showMarkdown && shouldRenderMarkdown(m) ? (
                     <div className="max-h-[min(70vh,32rem)] max-w-full overflow-auto">
                       <Markdown>{m.body}</Markdown>
                     </div>

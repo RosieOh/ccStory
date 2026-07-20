@@ -169,14 +169,26 @@ function registerIpc() {
     const rows = db
       .prepare(
         `SELECT m.id AS messageId, m.line_index AS lineIndex, m.role, m.body,
-                COALESCE(m.message_class, 'dialog') AS messageClass
+                COALESCE(m.message_class, 'dialog') AS messageClass,
+                m.content_kinds AS contentKinds
          FROM messages m
          WHERE m.session_id = ?
          ORDER BY m.line_index ASC
          LIMIT 25000`,
       )
-      .all(sessionId) as SessionMessageRow[]
-    return rows
+      .all(sessionId) as (Omit<SessionMessageRow, 'contentKinds'> & {
+        contentKinds: string | null
+      })[]
+    return rows.map((r): SessionMessageRow => {
+      let kinds: string[] = []
+      try {
+        const parsed = r.contentKinds ? JSON.parse(r.contentKinds) : []
+        if (Array.isArray(parsed)) kinds = parsed.filter((k): k is string => typeof k === 'string')
+      } catch {
+        /* stored value is not valid JSON — treat as no kinds */
+      }
+      return { ...r, contentKinds: kinds }
+    })
   })
 
   ipcMain.handle(IPC.recentSessions, async (_e, projectId: number | null | undefined) => {
