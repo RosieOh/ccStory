@@ -53,6 +53,103 @@ function sidebarPrimaryLabel(displayName: string): string {
   return parts[parts.length - 1] ?? displayName
 }
 
+/** 16px stroke icons — one visual family across the whole shell. */
+function Icon({ name, className = '' }: { name: TabIcon; className?: string }) {
+  const d: Record<TabIcon, string> = {
+    search: 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35',
+    star: 'm12 3 2.9 5.9 6.1.9-4.5 4.3 1.1 6.4L12 17.5 6.4 20.5l1.1-6.4L3 9.8l6.1-.9L12 3Z',
+    template: 'M5 3h9l5 5v13H5V3Zm9 0v5h5M8 13h8M8 17h5',
+    chart: 'M4 20V10m5 10V4m5 16v-7m5 7V8',
+    export: 'M12 15V3m0 0L8 7m4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+    folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z',
+  }
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 shrink-0 ${className}`}
+    >
+      <path d={d[name]} />
+    </svg>
+  )
+}
+
+type TabIcon = 'search' | 'star' | 'template' | 'chart' | 'export' | 'folder'
+
+/** Segmented control: canvas track, raised surface thumb for the active option. */
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  value: T
+  onChange: (v: T) => void
+  options: readonly (readonly [T, string])[]
+  disabled?: boolean
+}) {
+  return (
+    <div
+      className={`flex shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 ${
+        disabled ? 'pointer-events-none opacity-40' : ''
+      }`}
+    >
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          aria-pressed={value === v}
+          onClick={() => onChange(v)}
+          className={`rounded-md px-2.5 py-1 text-xs transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+            value === v
+              ? 'bg-zinc-900 font-medium text-white shadow-e1'
+              : 'text-zinc-500 hover:text-zinc-200'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Labelled row inside the inspector panel. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-medium text-zinc-500">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+const NAV_GROUPS: { label: string; items: { key: Tab; label: string; icon: TabIcon }[] }[] = [
+  {
+    label: '탐색',
+    items: [
+      { key: 'search', label: '검색', icon: 'search' },
+      { key: 'favorites', label: '즐겨찾기', icon: 'star' },
+      { key: 'templates', label: '템플릿', icon: 'template' },
+    ],
+  },
+  {
+    label: '분석',
+    items: [
+      { key: 'stats', label: '통계', icon: 'chart' },
+      { key: 'export', label: '보내기', icon: 'export' },
+    ],
+  },
+]
+
+/** Quiet secondary action — one shape for every non-primary button in the app. */
+const GHOST_BTN =
+  'rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-40'
+
 type Command = { id: string; label: string; hint?: string; run: () => void }
 
 /**
@@ -128,16 +225,17 @@ export default function App() {
   const [recentPlans, setRecentPlans] = useState<PlanListRow[]>([])
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(true)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [activeResult, setActiveResult] = useState(-1)
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
-    typeof localStorage !== 'undefined' && localStorage.getItem('vault-theme') === 'light'
-      ? 'light'
-      : 'dark',
+    typeof localStorage !== 'undefined' && localStorage.getItem('vault-theme') === 'dark'
+      ? 'dark'
+      : 'light',
   )
 
   useEffect(() => {
-    document.documentElement.classList.toggle('light', theme === 'light')
+    document.documentElement.classList.toggle('dark', theme === 'dark')
     try {
       localStorage.setItem('vault-theme', theme)
     } catch {
@@ -253,6 +351,27 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  /** How many filters differ from their default — shown on the 필터 button. */
+  const activeFilterCount = useMemo(() => {
+    let n = 0
+    if (role) n += 1
+    if (matchMode !== 'any') n += 1
+    if (sortMode !== 'relevance') n += 1
+    if (dateRange !== 'all') n += 1
+    if (!excludeMeta) n += 1
+    if (excludeSubagents) n += 1
+    return n
+  }, [role, matchMode, sortMode, dateRange, excludeMeta, excludeSubagents])
+
+  const resetFilters = useCallback(() => {
+    setRole('')
+    setMatchMode('any')
+    setSortMode('relevance')
+    setDateRange('all')
+    setExcludeMeta(true)
+    setExcludeSubagents(false)
   }, [])
 
   useEffect(() => {
@@ -425,16 +544,26 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">Claude Vault</h1>
-          <p className="text-xs text-zinc-500">로컬 Claude Code 대화 검색 · 재사용</p>
+      <header className="flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            aria-hidden
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-sm font-bold text-brand-fg shadow-e1"
+          >
+            CV
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-semibold tracking-tight text-white">
+              Claude Vault
+            </h1>
+            <p className="truncate text-xs text-zinc-500">로컬 Claude Code 대화 검색 · 재사용</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-900"
+            className="rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
             title="테마 전환"
           >
             {theme === 'dark' ? '라이트' : '다크'}
@@ -442,7 +571,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-900"
+            className="rounded-lg border border-zinc-800 px-2.5 py-1.5 font-mono text-xs text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
             title="명령 팔레트"
           >
             ⌘K
@@ -457,7 +586,7 @@ export default function App() {
           )}
           <button
             type="button"
-            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-900"
+            className="rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-brand-fg shadow-e1 transition-colors duration-150 ease-out hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             onClick={async () => {
               const r = await window.vault.reindex()
               setStatus(
@@ -475,232 +604,150 @@ export default function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-950/80 p-3">
-          <nav className="mb-4 flex flex-col gap-1 text-sm">
-            {(
-              [
-                ['search', '검색'],
-                ['favorites', '즐겨찾기'],
-                ['templates', '템플릿'],
-                ['stats', '통계'],
-                ['export', '보내기'],
-              ] as const
-            ).map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setTab(k)}
-                className={`rounded-md px-2 py-1.5 text-left ${
-                  tab === k ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'
-                }`}
-              >
-                {label}
-              </button>
+        <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
+          <nav className="space-y-5 p-3">
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p className="mb-1.5 px-2 text-[11px] font-medium text-zinc-500">{group.label}</p>
+                <div className="flex flex-col gap-0.5">
+                  {group.items.map((item) => {
+                    const active = tab === item.key
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setTab(item.key)}
+                        aria-current={active ? 'page' : undefined}
+                        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                          active
+                            ? 'bg-brand font-medium text-brand-fg shadow-e1'
+                            : 'text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200'
+                        }`}
+                      >
+                        <Icon name={item.icon} />
+                        {item.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             ))}
           </nav>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">프로젝트</p>
-          <div className="max-h-[40vh] space-y-1 overflow-auto pr-1 text-sm">
-            <button
-              type="button"
-              className={`block w-full truncate rounded px-2 py-1 text-left ${
-                projectId === undefined ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'
-              }`}
-              onClick={() => setProjectId(undefined)}
-            >
-              전체
-            </button>
-            {projects.map((p) => (
+
+          <div className="flex min-h-0 flex-1 flex-col border-t border-zinc-800 p-3">
+            <div className="mb-1.5 flex items-center gap-2 px-2">
+              <Icon name="folder" className="text-zinc-500" />
+              <p className="text-[11px] font-medium text-zinc-500">프로젝트</p>
+              <span className="ml-auto text-[11px] tabular text-zinc-500">{projects.length}</span>
+            </div>
+            <div className="-mr-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
               <button
-                key={p.id}
                 type="button"
-                className={`block w-full truncate rounded px-2 py-1 text-left ${
-                  projectId === p.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'
+                className={`flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors duration-150 ease-out ${
+                  projectId === undefined
+                    ? 'bg-brand-soft font-medium text-brand-text'
+                    : 'text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200'
                 }`}
-                title={`${p.displayName}\n${p.path}`}
-                onClick={() => setProjectId(p.id)}
+                onClick={() => setProjectId(undefined)}
               >
-                <span className="flex items-center gap-1">
-                  <span className="block truncate">{sidebarPrimaryLabel(p.displayName)}</span>
-                  {p.tool && p.tool !== 'claude' ? (
-                    <span className="shrink-0 rounded bg-amber-900/60 px-1 text-[9px] uppercase text-amber-200">
-                      {p.tool}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-[10px] text-zinc-600">
-                  세션 {p.sessionCount}
-                  {p.lastModified ? ` · ${new Date(p.lastModified).toLocaleDateString()}` : ''}
-                </span>
+                전체 프로젝트
               </button>
-            ))}
+              {projects.map((p) => {
+                const active = projectId === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`block w-full rounded-lg px-2.5 py-1.5 text-left transition-colors duration-150 ease-out ${
+                      active
+                        ? 'bg-brand-soft text-brand-text'
+                        : 'text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200'
+                    }`}
+                    title={`${p.displayName}\n${p.path}`}
+                    onClick={() => setProjectId(p.id)}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={`min-w-0 truncate text-[13px] ${active ? 'font-medium' : ''}`}
+                      >
+                        {sidebarPrimaryLabel(p.displayName)}
+                      </span>
+                      {p.tool && p.tool !== 'claude' ? (
+                        <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[9px] font-medium uppercase text-amber-600">
+                          {p.tool}
+                        </span>
+                      ) : null}
+                      <span className="ml-auto shrink-0 text-[11px] tabular text-zinc-500">
+                        {p.sessionCount}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden">
           {tab === 'search' && (
             <div className="flex h-full flex-col">
-              <div className="border-b border-zinc-800 p-4">
-                <div className="flex flex-wrap items-end gap-3">
-                  <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs text-zinc-400">
-                    검색
+              <div className="border-b border-zinc-800 bg-zinc-900 px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="relative min-w-0 flex-1">
+                    <Icon
+                      name="search"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                    />
                     <input
                       ref={searchInputRef}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="키워드, 문장, 기억에 남는 단어…"
-                      className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white outline-none ring-emerald-500/40 focus:ring-2"
+                      aria-label="검색어"
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-2.5 pl-9 pr-3 text-sm text-white outline-none transition duration-150 ease-out placeholder:text-zinc-500 focus:border-brand focus:bg-zinc-900 focus:ring-2 focus:ring-brand/25"
                     />
-                  </label>
-                  <div className="flex flex-col gap-1 text-xs text-zinc-400">
-                    <span>소스</span>
-                    <div className="flex rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
-                      {(
-                        [
-                          ['messages', '대화'],
-                          ['plans', '플랜'],
-                          ['all', '전체'],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setSearchScope(value)}
-                          className={`rounded px-2.5 py-1.5 text-sm ${
-                            searchScope === value
-                              ? 'bg-zinc-700 text-white'
-                              : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
                   </div>
-                  <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                    역할
-                    <select
-                      value={role}
-                      disabled={searchScope === 'plans'}
-                      onChange={(e) => setRole(e.target.value as typeof role)}
-                      className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <option value="">전체</option>
-                      <option value="user">user</option>
-                      <option value="assistant">assistant</option>
-                    </select>
-                  </label>
+                  <Segmented
+                    value={searchScope}
+                    onChange={setSearchScope}
+                    options={
+                      [
+                        ['messages', '대화'],
+                        ['plans', '플랜'],
+                        ['all', '전체'],
+                      ] as const
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setInspectorOpen((v) => !v)}
+                    aria-expanded={inspectorOpen}
+                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-xs transition-colors duration-150 ease-out ${
+                      activeFilterCount > 0
+                        ? 'border-brand-line bg-brand-soft text-brand-text'
+                        : 'border-zinc-800 text-zinc-500 hover:bg-zinc-950 hover:text-zinc-200'
+                    }`}
+                  >
+                    필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+                  </button>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-zinc-400">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={excludeMeta}
-                      disabled={searchScope === 'plans'}
-                      onChange={(e) => setExcludeMeta(e.target.checked)}
-                    />
-                    메타 줄 제외
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={excludeSubagents}
-                      disabled={searchScope === 'plans'}
-                      onChange={(e) => setExcludeSubagents(e.target.checked)}
-                    />
-                    서브에이전트 제외
-                  </label>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-400">
-                  <div className="flex items-center gap-1.5">
-                    <span>정밀도</span>
-                    <div className="flex rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
-                      {(
-                        [
-                          ['any', '아무거나'],
-                          ['all', '모두'],
-                          ['phrase', '구문'],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setMatchMode(value)}
-                          className={`rounded px-2 py-1 ${
-                            matchMode === value ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-1.5">
-                    정렬
-                    <select
-                      value={sortMode}
-                      onChange={(e) => setSortMode(e.target.value as SortMode)}
-                      className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-white"
-                    >
-                      <option value="relevance">관련도</option>
-                      <option value="newest">최신순</option>
-                      <option value="oldest">오래된순</option>
-                    </select>
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <span>기간</span>
-                    <div className="flex rounded-md border border-zinc-800 bg-zinc-900 p-0.5">
-                      {(
-                        [
-                          ['all', '전체'],
-                          ['24h', '24시간'],
-                          ['7d', '7일'],
-                          ['30d', '30일'],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setDateRange(value)}
-                          className={`rounded px-2 py-1 ${
-                            dateRange === value ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                {searchScope !== 'messages' ? (
-                  <p className="mt-2 text-xs text-amber-200/70">
-                    플랜 검색은 ~/.claude/plans 아래 Markdown만 대상입니다. 왼쪽 프로젝트 필터는 대화
-                    검색에만 적용됩니다.
-                  </p>
-                ) : null}
                 <p className="mt-2 text-xs text-zinc-500">
-                  검색어가 비어 있으면 아래에 최근 세션·플랜(소스에 따라)이 표시됩니다. 키워드 입력 시
-                  FTS5 검색 · 대화는「세션 전체」로 JSONL 시간순 대화를 열 수 있습니다.
+                  {query.trim()
+                    ? `${fuzzyHits.length}건${loading ? ' · 검색 중…' : ''}`
+                    : '검색어를 비우면 최근 세션과 플랜을 보여줍니다.'}
                 </p>
-                {searchScope === 'all' ? (
-                  <p className="mt-1 text-xs text-zinc-600">
-                    소스「전체」: 대화 히트를 먼저(점수순), 이어서 플랜 히트를 표시합니다. 두 종류의 점수는
-                    서로 비교되지 않습니다.
-                  </p>
-                ) : null}
               </div>
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
                 {loading && <p className="text-sm text-zinc-500">검색 중…</p>}
                 {!loading && query.trim() === '' && searchScope !== 'plans' && recentSessions.length > 0 && (
-                  <section className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-3">
-                    <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                      최근 세션
-                    </h3>
-                    <ul className="space-y-1.5">
+                  <section>
+                    <h3 className="mb-2.5 text-xs font-medium text-zinc-500">최근 세션</h3>
+                    <ul className="space-y-2">
                       {recentSessions.map((s) => (
                         <li key={s.sessionId}>
                           <button
                             type="button"
-                            className="w-full rounded-md border border-zinc-800/80 px-2 py-1.5 text-left text-xs hover:bg-zinc-800/60"
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-3 text-left shadow-e1 transition duration-150 ease-out hover:border-brand-line hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                             onClick={() =>
                               setTranscriptOpen({
                                 sessionId: s.sessionId,
@@ -710,15 +757,22 @@ export default function App() {
                               })
                             }
                           >
-                            <span className="block truncate font-medium text-zinc-200">
-                              {sidebarPrimaryLabel(s.projectName)}
+                            <span className="flex items-baseline gap-2">
+                              <span className="min-w-0 truncate text-sm font-medium text-white">
+                                {sidebarPrimaryLabel(s.projectName)}
+                              </span>
+                              <span className="ml-auto shrink-0 text-[11px] tabular text-zinc-500">
+                                {new Date(s.mtime).toLocaleDateString()}
+                              </span>
                             </span>
-                            <span className="block truncate text-[10px] text-zinc-500">{s.sessionFile}</span>
                             {s.preview ? (
-                              <span className="mt-0.5 block truncate text-[10px] text-zinc-600">
+                              <span className="mt-1 block truncate text-xs text-zinc-400">
                                 {s.preview}
                               </span>
                             ) : null}
+                            <span className="mt-1 block truncate font-mono text-[11px] text-zinc-500">
+                              {s.sessionFile}
+                            </span>
                           </button>
                         </li>
                       ))}
@@ -726,16 +780,14 @@ export default function App() {
                   </section>
                 )}
                 {!loading && query.trim() === '' && searchScope !== 'messages' && recentPlans.length > 0 && (
-                  <section className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-3">
-                    <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                      최근 플랜
-                    </h3>
-                    <ul className="space-y-1.5">
+                  <section>
+                    <h3 className="mb-2.5 text-xs font-medium text-zinc-500">최근 플랜</h3>
+                    <ul className="space-y-2">
                       {recentPlans.map((pl) => (
                         <li key={pl.id}>
                           <button
                             type="button"
-                            className="w-full rounded-md border border-zinc-800/80 px-2 py-1.5 text-left text-xs hover:bg-zinc-800/60"
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-3 text-left shadow-e1 transition duration-150 ease-out hover:border-plan-line hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-plan-text/30"
                             onClick={() =>
                               setPlanPreview({
                                 planId: pl.id,
@@ -744,10 +796,16 @@ export default function App() {
                               })
                             }
                           >
-                            <span className="block truncate font-medium text-violet-200">{pl.title}</span>
-                            <span className="block truncate text-[10px] text-zinc-500">{pl.filePath}</span>
-                            <span className="mt-0.5 block text-[10px] text-zinc-600">
-                              {new Date(pl.mtime).toLocaleString()}
+                            <span className="flex items-baseline gap-2">
+                              <span className="min-w-0 truncate text-sm font-medium text-violet-600">
+                                {pl.title}
+                              </span>
+                              <span className="ml-auto shrink-0 text-[11px] tabular text-zinc-500">
+                                {new Date(pl.mtime).toLocaleDateString()}
+                              </span>
+                            </span>
+                            <span className="mt-1 block truncate font-mono text-[11px] text-zinc-500">
+                              {pl.filePath}
                             </span>
                           </button>
                         </li>
@@ -756,9 +814,21 @@ export default function App() {
                   </section>
                 )}
                 {!loading && query.trim() !== '' && fuzzyHits.length === 0 && (
-                  <p className="text-sm text-zinc-500">
-                    결과가 없습니다. 필터를 완화하거나 재인덱싱을 시도해 보세요.
-                  </p>
+                  <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-900 px-5 py-10 text-center">
+                    <p className="text-sm font-medium text-white">일치하는 결과가 없습니다</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      정밀도를 「아무거나」로 낮추거나 기간 필터를 넓혀 보세요.
+                    </p>
+                    {activeFilterCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="mt-3 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
+                      >
+                        필터 초기화
+                      </button>
+                    )}
+                  </div>
                 )}
                 {fuzzyHits.map((h, i) =>
                   isPlanHit(h) ? (
@@ -771,42 +841,51 @@ export default function App() {
                   ) : (
                     <article
                       key={h.messageId}
-                      className={`rounded-lg border bg-zinc-900/40 p-4 shadow-sm ${
-                        i === activeResult ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-zinc-800'
+                      className={`rounded-xl border bg-zinc-900 p-4 transition duration-150 ease-out ${
+                        i === activeResult
+                          ? 'border-brand ring-2 ring-brand/25 shadow-e2'
+                          : 'border-zinc-800 shadow-e1 hover:shadow-e2'
                       }`}
                     >
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs text-zinc-500">
-                          <span className="font-medium text-emerald-400" title={h.projectSlug}>
-                            {h.projectName || h.projectSlug}
+                      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-zinc-500">
+                          <span
+                            className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                              h.role === 'user'
+                                ? 'bg-brand-soft text-brand-text'
+                                : 'bg-zinc-950 text-zinc-400'
+                            }`}
+                          >
+                            {h.role === 'user' ? '나' : h.role === 'assistant' ? 'Claude' : h.role}
                           </span>
-                          <span className="mx-1">·</span>
-                          <span>{h.sessionFile}</span>
-                          <span className="mx-1">·</span>
-                          <span className="text-zinc-400">{h.role}</span>
+                          <span className="truncate font-medium text-zinc-300" title={h.projectSlug}>
+                            {sidebarPrimaryLabel(h.projectName || h.projectSlug)}
+                          </span>
+                          <span aria-hidden>·</span>
+                          <span className="truncate font-mono text-[11px]">{h.sessionFile}</span>
                           {h.tsMs ? (
                             <>
-                              <span className="mx-1">·</span>
-                              <span className="text-zinc-600">{formatTs(h.tsMs)}</span>
+                              <span aria-hidden>·</span>
+                              <span className="tabular">{formatTs(h.tsMs)}</span>
                             </>
                           ) : null}
                           {messageClassLabel(h.messageClass) ? (
-                            <span className="ml-1 rounded bg-zinc-800 px-1 py-px text-[10px] text-amber-200/90">
+                            <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
                               {messageClassLabel(h.messageClass)}
                             </span>
                           ) : null}
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                           <button
                             type="button"
-                            className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                            className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                             onClick={() => window.vault.copyText(h.body)}
                           >
                             복사
                           </button>
                           <button
                             type="button"
-                            className="rounded-md border border-sky-800/80 bg-sky-950/40 px-2 py-1 text-xs text-sky-100 hover:bg-sky-900/50"
+                            className={GHOST_BTN}
                             onClick={() =>
                               setTranscriptOpen({
                                 sessionId: h.sessionId,
@@ -820,7 +899,7 @@ export default function App() {
                           </button>
                           <button
                             type="button"
-                            className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                            className={GHOST_BTN}
                             onClick={async () => {
                               await window.vault.favoriteAdd(h.messageId)
                               setStatus('즐겨찾기에 추가했습니다.')
@@ -830,14 +909,14 @@ export default function App() {
                           </button>
                           <button
                             type="button"
-                            className="rounded-md border border-violet-800/80 bg-violet-950/40 px-2 py-1 text-xs text-violet-100 hover:bg-violet-900/50"
+                            className={GHOST_BTN}
                             onClick={async () => {
                               const name = h.body.slice(0, 40).replace(/\s+/g, ' ').trim() || '템플릿'
                               await window.vault.templateCreate(name, h.body)
                               setStatus('템플릿으로 저장했습니다. 템플릿 탭에서 편집하세요.')
                             }}
                           >
-                            템플릿 저장
+                            템플릿
                           </button>
                           <label className="flex items-center gap-1 text-xs text-zinc-400">
                             <input
@@ -849,19 +928,12 @@ export default function App() {
                           </label>
                         </div>
                       </div>
-                      {(() => {
-                        const align = chatAlignForDialog(h.role, h.messageClass)
-                        return (
-                          <div className={`mt-2 flex w-full min-w-0 ${chatRowFlex(align)}`}>
-                            <div className={chatBubbleShellClass(align, false)}>
-                              <p className="mb-2 text-sm text-amber-100/90">« {h.snippet} »</p>
-                              <pre className="max-h-48 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-200 [overflow-wrap:anywhere]">
-                                {h.body}
-                              </pre>
-                            </div>
-                          </div>
-                        )
-                      })()}
+                      {/* Results are scanned, not conversed with: full width beats
+                          chat alignment here. Bubbles stay in the transcript. */}
+                      <p className="text-sm leading-relaxed text-snippet">« {h.snippet} »</p>
+                      <pre className="mt-2 max-h-48 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-relaxed text-zinc-300 [overflow-wrap:anywhere]">
+                        {h.body}
+                      </pre>
                       <TagEditor messageId={h.messageId} tags={tags} onChange={loadTags} />
                     </article>
                   ),
@@ -933,26 +1005,59 @@ export default function App() {
               {!stats && <p className="text-zinc-500">불러오는 중…</p>}
               {stats && (
                 <div className="grid gap-6 md:grid-cols-2">
-                  <section>
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">요약</h3>
-                    <ul className="space-y-1 text-zinc-300">
-                      <li>프로젝트: {stats.totalProjects}</li>
-                      <li>세션: {stats.totalSessions}</li>
-                      <li>메시지: {stats.totalMessages}</li>
-                    </ul>
-                  </section>
-                  <section>
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">역할별</h3>
-                    <ul className="space-y-1 text-zinc-300">
-                      {stats.messagesByRole.map((r) => (
-                        <li key={r.role}>
-                          {r.role}: {r.count}
-                        </li>
+                  <section className="md:col-span-2">
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">요약</h3>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {(
+                        [
+                          ['프로젝트', stats.totalProjects],
+                          ['세션', stats.totalSessions],
+                          ['메시지', stats.totalMessages],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-xl border border-zinc-800 bg-zinc-900 p-3.5 shadow-e1"
+                        >
+                          <div className="text-lg font-semibold tabular text-white">
+                            {value.toLocaleString()}
+                          </div>
+                          <div className="text-[11px] text-zinc-500">{label}</div>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </section>
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">토큰 사용량 (실측)</h3>
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">역할별 메시지</h3>
+                    <div className="space-y-1.5">
+                      {(() => {
+                        const max = Math.max(1, ...stats.messagesByRole.map((r) => r.count))
+                        const label: Record<string, string> = {
+                          user: '나',
+                          assistant: 'Claude',
+                          tool: '도구',
+                        }
+                        return stats.messagesByRole.map((r) => (
+                          <div key={r.role} className="flex items-center gap-2 text-xs">
+                            <span className="w-16 shrink-0 text-zinc-400">
+                              {label[r.role] ?? r.role}
+                            </span>
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                              <div
+                                className="h-full rounded-full bg-brand"
+                                style={{ width: `${(r.count / max) * 100}%` }}
+                              />
+                            </div>
+                            <span className="w-16 shrink-0 text-right tabular text-zinc-500">
+                              {r.count.toLocaleString()}
+                            </span>
+                          </div>
+                        ))
+                      })()}
+                    </div>
+                  </section>
+                  <section className="md:col-span-2">
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">토큰 사용량 (실측)</h3>
                     {stats.tokenTotals.input + stats.tokenTotals.output === 0 ? (
                       <p className="text-xs text-zinc-500">
                         토큰 사용량 데이터가 없습니다. 재인덱싱하면 어시스턴트 응답의 usage에서 수집됩니다.
@@ -961,10 +1066,10 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         {(
                           [
-                            ['입력', stats.tokenTotals.input, 'text-emerald-300'],
-                            ['출력', stats.tokenTotals.output, 'text-sky-300'],
-                            ['캐시 읽기', stats.tokenTotals.cacheRead, 'text-violet-300'],
-                            ['캐시 생성', stats.tokenTotals.cacheCreation, 'text-amber-300'],
+                            ['입력', stats.tokenTotals.input, 'text-brand-text'],
+                            ['출력', stats.tokenTotals.output, 'text-sky-600'],
+                            ['캐시 읽기', stats.tokenTotals.cacheRead, 'text-plan-text'],
+                            ['캐시 생성', stats.tokenTotals.cacheCreation, 'text-amber-600'],
                           ] as const
                         ).map(([label, value, cls]) => (
                           <div
@@ -982,7 +1087,7 @@ export default function App() {
                   </section>
                   {stats.tokensByModel.length > 0 && (
                     <section className="md:col-span-2">
-                      <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">모델별 사용</h3>
+                      <h3 className="mb-2 text-xs font-medium text-zinc-500">모델별 사용</h3>
                       <div className="space-y-2">
                         {(() => {
                           const max = Math.max(
@@ -999,9 +1104,9 @@ export default function App() {
                                     {m.messages}턴 · {formatCompact(total)} 토큰
                                   </span>
                                 </div>
-                                <div className="h-2 overflow-hidden rounded bg-zinc-800">
+                                <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
                                   <div
-                                    className="h-full rounded bg-emerald-600/70"
+                                    className="h-full rounded-full bg-brand"
                                     style={{ width: `${(total / max) * 100}%` }}
                                   />
                                 </div>
@@ -1013,12 +1118,12 @@ export default function App() {
                     </section>
                   )}
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">자주 등장한 단어</h3>
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">자주 등장한 단어</h3>
                     <div className="flex flex-wrap gap-2">
                       {stats.topTokens.map((t) => (
                         <span
                           key={t.token}
-                          className="rounded-full bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
+                          className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300"
                         >
                           {t.token}{' '}
                           <span className="text-zinc-500">×{t.count}</span>
@@ -1027,7 +1132,7 @@ export default function App() {
                     </div>
                   </section>
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium uppercase text-zinc-500">
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">
                       {stats.activityFromTimestamps ? '메시지 타임스탬프 기준 활동' : '세션 수정일 기준 활동'}
                     </h3>
                     {(() => {
@@ -1037,9 +1142,9 @@ export default function App() {
                           {stats.activityByDay.map((d) => (
                             <div key={d.day} className="flex items-center gap-2">
                               <span className="w-20 shrink-0 font-mono text-[11px]">{d.day}</span>
-                              <div className="h-2 flex-1 overflow-hidden rounded bg-zinc-900">
+                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
                                 <div
-                                  className="h-full rounded bg-sky-700/70"
+                                  className="h-full rounded-full bg-brand/70"
                                   style={{ width: `${(d.count / max) * 100}%` }}
                                 />
                               </div>
@@ -1100,34 +1205,204 @@ export default function App() {
               </div>
               <textarea
                 readOnly
-                className="min-h-0 flex-1 resize-none rounded-md border border-zinc-800 bg-black/50 p-3 font-mono text-xs text-zinc-200"
+                className="min-h-0 flex-1 resize-none rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-200"
                 value={exportText}
                 placeholder="검색 탭에서 메시지를 선택한 뒤 Markdown/CSV를 누르면 여기에 표시됩니다."
               />
             </div>
           )}
         </main>
+
+        {tab === 'search' && inspectorOpen && (
+          <aside className="flex w-[300px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-900">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">검색 설정</h2>
+                <p className="text-[11px] text-zinc-500">
+                  {activeFilterCount > 0 ? `${activeFilterCount}개 적용됨` : '기본값'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="rounded-lg px-2 py-1 text-[11px] text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
+                  >
+                    초기화
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInspectorOpen(false)}
+                  aria-label="검색 설정 닫기"
+                  className="rounded-lg px-2 py-1 text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+              <Field label="정밀도">
+                <Segmented
+                  value={matchMode}
+                  onChange={setMatchMode}
+                  options={
+                    [
+                      ['any', '아무거나'],
+                      ['all', '모두'],
+                      ['phrase', '구문'],
+                    ] as const
+                  }
+                />
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  {matchMode === 'any'
+                    ? '단어 중 하나라도 있으면 찾습니다.'
+                    : matchMode === 'all'
+                      ? '모든 단어를 포함한 결과만 찾습니다.'
+                      : '입력한 문장 그대로를 찾습니다.'}
+                </p>
+              </Field>
+
+              <Field label="정렬">
+                <Segmented
+                  value={sortMode}
+                  onChange={setSortMode}
+                  options={
+                    [
+                      ['relevance', '관련도'],
+                      ['newest', '최신'],
+                      ['oldest', '오래된'],
+                    ] as const
+                  }
+                />
+              </Field>
+
+              <Field label="기간">
+                <Segmented
+                  value={dateRange}
+                  onChange={setDateRange}
+                  options={
+                    [
+                      ['all', '전체'],
+                      ['24h', '24시간'],
+                      ['7d', '7일'],
+                      ['30d', '30일'],
+                    ] as const
+                  }
+                />
+              </Field>
+
+              <Field label="역할">
+                <Segmented
+                  value={role}
+                  onChange={setRole}
+                  disabled={searchScope === 'plans'}
+                  options={
+                    [
+                      ['', '전체'],
+                      ['user', '나'],
+                      ['assistant', 'Claude'],
+                    ] as const
+                  }
+                />
+              </Field>
+
+              <Field label="제외">
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-start gap-2.5 text-xs text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={excludeMeta}
+                      disabled={searchScope === 'plans'}
+                      onChange={(e) => setExcludeMeta(e.target.checked)}
+                      className="mt-0.5 accent-brand"
+                    />
+                    <span>
+                      메타 줄
+                      <span className="block text-[11px] text-zinc-500">권한·제목 등 시스템 기록</span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2.5 text-xs text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={excludeSubagents}
+                      disabled={searchScope === 'plans'}
+                      onChange={(e) => setExcludeSubagents(e.target.checked)}
+                      className="mt-0.5 accent-brand"
+                    />
+                    <span>
+                      서브에이전트
+                      <span className="block text-[11px] text-zinc-500">subagents 경로의 로그</span>
+                    </span>
+                  </label>
+                </div>
+              </Field>
+
+              <Field label="태그">
+                <div className="flex gap-1.5">
+                  <input
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void createTag()
+                    }}
+                    placeholder="새 태그 이름"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs text-white outline-none transition duration-150 ease-out placeholder:text-zinc-500 focus:border-brand focus:bg-zinc-900 focus:ring-2 focus:ring-brand/25"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void createTag()}
+                    disabled={!newTag.trim()}
+                    className="shrink-0 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    추가
+                  </button>
+                </div>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <span
+                        key={t.id}
+                        className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-400"
+                      >
+                        {t.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Field>
+
+              {searchScope !== 'messages' && (
+                <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-700">
+                  플랜은 <code>~/.claude/plans</code> 아래 Markdown만 대상입니다. 왼쪽 프로젝트 필터는
+                  대화 검색에만 적용됩니다.
+                </p>
+              )}
+              {searchScope === 'all' && (
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  「전체」는 대화 히트를 먼저, 이어서 플랜 히트를 보여줍니다. 두 점수는 서로 비교되지
+                  않습니다.
+                </p>
+              )}
+            </div>
+          </aside>
+        )}
       </div>
 
-      <footer className="border-t border-zinc-800 px-4 py-2 text-xs text-zinc-500">
-        <div className="flex flex-wrap items-center gap-3">
-          <span>{status}</span>
-          <div className="flex flex-1 flex-wrap items-center gap-2">
-            <input
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              placeholder="새 태그 이름"
-              className="min-w-[120px] flex-1 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-white"
-            />
-            <button
-              type="button"
-              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200"
-              onClick={() => void createTag()}
-            >
-              태그 생성
-            </button>
-          </div>
-        </div>
+      <footer className="flex items-center gap-3 border-t border-zinc-800 bg-zinc-900 px-5 py-2 text-xs text-zinc-500">
+        {status ? (
+          <span className="flex items-center gap-1.5 text-zinc-400">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-brand" />
+            {status}
+          </span>
+        ) : (
+          <span>준비됨</span>
+        )}
+        <span className="ml-auto tabular">
+          프로젝트 {projects.length} · 태그 {tags.length}
+        </span>
       </footer>
 
       {transcriptOpen && (
@@ -1175,13 +1450,13 @@ function PlanSearchHitCard({
 
   return (
     <article
-      className={`rounded-lg border bg-violet-950/20 p-4 shadow-sm ${
-        active ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-violet-900/50'
+      className={`rounded-xl border bg-plan-bg p-4 shadow-e1 ${
+        active ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-plan-line'
       }`}
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-zinc-500">
-          <span className="font-medium text-violet-300">플랜</span>
+          <span className="font-medium text-plan-text">플랜</span>
           <span className="mx-1">·</span>
           <span className="text-zinc-300" title={h.filePath}>
             {h.title}
@@ -1197,7 +1472,7 @@ function PlanSearchHitCard({
           </button>
           <button
             type="button"
-            className="rounded-md border border-violet-700 px-2 py-1 text-xs text-violet-100 hover:bg-violet-950/80"
+            className="rounded-md border border-plan-line px-2.5 py-1 text-xs text-plan-text hover:bg-plan-bg"
             onClick={() => void toggle()}
           >
             {expanded ? '접기' : '본문 보기'}
@@ -1205,9 +1480,9 @@ function PlanSearchHitCard({
         </div>
       </div>
       <p className="mb-1 font-mono text-[10px] text-zinc-600">{h.filePath}</p>
-      <p className="mb-2 text-sm text-amber-100/90">« {h.snippet} »</p>
+      <p className="mb-2 text-sm text-snippet">« {h.snippet} »</p>
       {expanded && body !== null ? (
-        <div className="max-h-64 overflow-auto rounded bg-black/40 p-3">
+        <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3">
           <Markdown>{body}</Markdown>
         </div>
       ) : null}
@@ -1257,12 +1532,12 @@ function PlanMarkdownModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-violet-800/60 bg-zinc-950 shadow-xl"
+        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-plan-line bg-zinc-900 shadow-e3"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plan-preview-title"
@@ -1278,7 +1553,7 @@ function PlanMarkdownModal({
           <div className="flex shrink-0 gap-2">
             <button
               type="button"
-              className="rounded-md border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+              className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
               onClick={() => void window.vault.copyText(body)}
             >
               전체 복사
@@ -1286,7 +1561,7 @@ function PlanMarkdownModal({
             <button
               ref={closeBtnRef}
               type="button"
-              className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-900 hover:bg-white"
+              className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover"
               onClick={onClose}
             >
               닫기
@@ -1373,12 +1648,12 @@ function SessionTranscriptModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl"
+        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-e3"
         role="dialog"
         aria-modal="true"
         aria-labelledby="transcript-title"
@@ -1427,7 +1702,7 @@ function SessionTranscriptModal({
           <div className="flex shrink-0 gap-2">
             <button
               type="button"
-              className="rounded-md border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+              className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
               onClick={() => copyAll()}
             >
               전체 복사
@@ -1435,7 +1710,7 @@ function SessionTranscriptModal({
             <button
               ref={closeBtnRef}
               type="button"
-              className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-900 hover:bg-white"
+              className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover"
               onClick={onClose}
             >
               닫기
@@ -1471,7 +1746,7 @@ function SessionTranscriptModal({
                     {align !== 'center' ? (
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                          isUser ? 'bg-emerald-900/80 text-emerald-200' : 'bg-sky-900/60 text-sky-200'
+                          isUser ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-300'
                         }`}
                       >
                         {isUser ? '나' : 'Claude'}
@@ -1548,10 +1823,10 @@ function TagEditor({
           key={t.id}
           type="button"
           onClick={() => void toggle(t.id)}
-          className={`rounded-full px-2 py-0.5 text-[11px] ${
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors duration-150 ease-out ${
             selected.includes(t.id)
-              ? 'bg-emerald-700 text-white'
-              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              ? 'border-brand bg-brand font-medium text-brand-fg'
+              : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-brand-line hover:text-zinc-200'
           }`}
         >
           {t.name}
@@ -1603,12 +1878,12 @@ function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: (
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 p-4 pt-[12vh]"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-scrim p-4 pt-[12vh]"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-e3"
         role="dialog"
         aria-modal="true"
         aria-label="명령 팔레트"
@@ -1770,7 +2045,7 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
           )}
         </div>
         <label className="mb-1 block text-xs text-zinc-500">
-          본문 — <code className="text-violet-300">{'{{변수}}'}</code> 형태로 채울 자리를 표시하세요.
+          본문 — <code className="text-plan-text">{'{{변수}}'}</code> 형태로 채울 자리를 표시하세요.
         </label>
         <textarea
           value={body}
@@ -1780,7 +2055,7 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
         />
         {variables.length > 0 && (
           <section className="mt-4">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">변수 채우기</h3>
+            <h3 className="mb-2 text-xs font-medium text-zinc-500">변수 채우기</h3>
             <div className="grid gap-2 sm:grid-cols-2">
               {variables.map((v) => (
                 <label key={v} className="flex flex-col gap-1 text-xs text-zinc-400">
@@ -1806,7 +2081,7 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
               채워서 복사
             </button>
           </div>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-800 bg-black/40 p-3 text-xs text-zinc-200">
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200">
             {rendered || '본문을 입력하면 여기에 미리보기가 표시됩니다.'}
           </pre>
         </section>

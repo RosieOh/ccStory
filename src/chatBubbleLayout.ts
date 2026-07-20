@@ -18,18 +18,18 @@ export function chatRowFlex(align: ChatAlign): string {
 }
 
 export function chatBubbleShellClass(align: ChatAlign, highlighted: boolean): string {
-  const hi = highlighted
-    ? 'ring-2 ring-amber-500/60 border-amber-500/50 shadow-[0_0_0_1px_rgba(245,158,11,0.15)]'
-    : ''
-  const base = 'rounded-2xl border px-3 py-2 text-sm min-w-0 overflow-hidden'
+  // Bubble tints are CSS-variable driven (see index.css) so they stay legible in
+  // both themes instead of baking in dark-only accents.
+  const hi = highlighted ? 'ring-2 ring-amber-400/60 border-amber-400/70' : ''
+  const base = 'rounded-2xl border px-3.5 py-2.5 text-sm min-w-0 overflow-hidden'
   const dialogBubbleMax = 'max-w-[min(92vw,34rem)] sm:max-w-[min(92vw,38rem)]'
   if (align === 'end') {
-    return `${base} ${dialogBubbleMax} flex-[0_1_auto] border-emerald-600/50 bg-emerald-950/55 text-zinc-100 ${hi}`
+    return `${base} ${dialogBubbleMax} flex-[0_1_auto] border-bubble-user-line bg-bubble-user text-zinc-200 ${hi}`
   }
   if (align === 'start') {
-    return `${base} ${dialogBubbleMax} flex-[0_1_auto] border-sky-800/45 bg-sky-950/35 text-zinc-100 ${hi}`
+    return `${base} ${dialogBubbleMax} flex-[0_1_auto] border-bubble-ai-line bg-bubble-ai text-zinc-200 ${hi}`
   }
-  return `${base} w-full max-w-4xl border-zinc-700 bg-zinc-900/75 text-zinc-200 ${hi}`
+  return `${base} w-full max-w-4xl border-zinc-800 bg-zinc-950 text-zinc-300 ${hi}`
 }
 
 export function isMessageHit(h: UnifiedSearchHit): h is MessageHit {

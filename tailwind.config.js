@@ -6,11 +6,18 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: [
+          'Pretendard',
+          'Inter',
+          'system-ui',
+          '-apple-system',
+          'Segoe UI',
+          'Malgun Gothic',
+          'sans-serif',
+        ],
       },
-      // The neutral scale is driven by CSS variables so the whole UI can flip
-      // between dark (default) and light by swapping the `--z-*` / `--white`
-      // values on `<html>` — see index.css. Accent colors are left untouched.
+      // The neutral scale and brand roles are CSS variables (see index.css), so
+      // the same class set themes light and dark. Accent hues stay untouched.
       colors: {
         white: 'rgb(var(--white) / <alpha-value>)',
         zinc: {
@@ -26,6 +33,39 @@ module.exports = {
           900: z(900),
           950: z(950),
         },
+        brand: {
+          DEFAULT: 'rgb(var(--brand) / <alpha-value>)',
+          hover: 'rgb(var(--brand-hover) / <alpha-value>)',
+          fg: 'rgb(var(--brand-fg) / <alpha-value>)',
+          soft: 'rgb(var(--brand-soft) / <alpha-value>)',
+          line: 'rgb(var(--brand-line) / <alpha-value>)',
+          text: 'rgb(var(--brand-text) / <alpha-value>)',
+        },
+        bubble: {
+          user: 'rgb(var(--bubble-user) / <alpha-value>)',
+          'user-line': 'rgb(var(--bubble-user-line) / <alpha-value>)',
+          ai: 'rgb(var(--bubble-ai) / <alpha-value>)',
+          'ai-line': 'rgb(var(--bubble-ai-line) / <alpha-value>)',
+        },
+        plan: {
+          bg: 'rgb(var(--plan-bg) / <alpha-value>)',
+          line: 'rgb(var(--plan-line) / <alpha-value>)',
+          text: 'rgb(var(--plan-text) / <alpha-value>)',
+        },
+        snippet: 'rgb(var(--snippet) / <alpha-value>)',
+        scrim: 'rgb(var(--scrim) / var(--scrim-alpha))',
+      },
+      boxShadow: {
+        e1: 'var(--shadow-e1)',
+        e2: 'var(--shadow-e2)',
+        e3: 'var(--shadow-e3)',
+      },
+      borderRadius: {
+        xl: '0.875rem',
+        '2xl': '1.125rem',
+      },
+      transitionTimingFunction: {
+        out: 'cubic-bezier(.22,.61,.36,1)',
       },
     },
   },
