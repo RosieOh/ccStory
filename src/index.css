@@ -3,93 +3,96 @@
 @tailwind utilities;
 
 /*
- * Design tokens.
+ * Design tokens — operator-console register.
  *
- * The neutral ramp is driven by CSS variables and exposed to Tailwind as the
- * `zinc` scale (see tailwind.config.js), so a single class set themes both ways.
- * Light is the default: this is a reading tool — long transcripts scanned in a
- * lit room — and dark stays available via the header toggle.
+ * This is a log/transcript inspection tool: the user is scanning tens of
+ * thousands of rows for one line. So the system optimises for density and
+ * legibility over decoration — true-neutral surfaces, hairline separators,
+ * small radii, monospace for anything machine-generated, and accent colour
+ * reserved for selection and state.
  *
- * Ramp reads low→high as ink→canvas in light, and inverts in dark:
- *   950 canvas · 900 surface · 800 line · 700 line-strong
- *   600/500 subtle text · 400 muted text · 200 body · 50 strongest
+ * The neutral ramp drives Tailwind's `zinc` scale (tailwind.config.js), so one
+ * class set themes both ways. Ramp reads 950 canvas → 50 ink in light.
  */
 :root {
-  --z-950: 245 247 246;
+  --z-950: 250 250 251;
   --z-900: 255 255 255;
-  --z-800: 228 233 231;
-  --z-700: 210 217 214;
-  --z-600: 130 140 136;
-  --z-500: 110 121 117;
-  --z-400: 90 102 99;
-  --z-300: 53 64 60;
-  --z-200: 30 39 36;
-  --z-100: 22 29 27;
-  --z-50: 16 23 21;
-  --white: 16 23 21;
+  --z-800: 226 228 233;
+  --z-700: 205 209 216;
+  --z-600: 128 134 146;
+  --z-500: 108 114 126;
+  --z-400: 92 98 112;
+  --z-300: 55 61 72;
+  --z-200: 30 34 42;
+  --z-100: 23 26 32;
+  --z-50: 17 19 24;
+  --white: 17 19 24;
 
-  /* Brand — emerald. `brand` is a fill that carries white text (4.8:1). */
-  --brand: 4 120 87;
-  --brand-hover: 3 99 71;
+  /* Accent marks selection and primary state — never decoration. */
+  --brand: 13 124 86;
+  --brand-hover: 10 102 70;
   --brand-fg: 255 255 255;
-  --brand-soft: 236 253 245;
-  --brand-line: 167 243 208;
-  --brand-text: 4 120 87;
+  --brand-soft: 233 246 240;
+  --brand-line: 176 219 202;
+  --brand-text: 12 110 76;
 
-  /* Conversation surfaces: who said it is carried by tint, not saturation. */
-  --bubble-user: 236 253 245;
-  --bubble-user-line: 167 243 208;
-  --bubble-ai: 248 250 249;
-  --bubble-ai-line: 226 232 230;
-  --plan-bg: 245 243 255;
-  --plan-line: 221 214 254;
-  --plan-text: 109 40 217;
-  --snippet: 161 98 7;
-  --scrim: 16 23 21;
-  --scrim-alpha: 0.38;
+  /* Conversation surfaces: authorship by tint, kept low-chroma. */
+  --bubble-user: 236 246 241;
+  --bubble-user-line: 197 226 214;
+  --bubble-ai: 246 247 249;
+  --bubble-ai-line: 226 228 233;
+  --plan-bg: 243 242 250;
+  --plan-line: 214 211 236;
+  --plan-text: 88 63 168;
+  --snippet: 146 88 12;
 
-  --shadow-e1: 0 1px 2px rgb(16 23 21 / 0.05), 0 1px 3px rgb(16 23 21 / 0.04);
-  --shadow-e2: 0 4px 12px rgb(16 23 21 / 0.07);
-  --shadow-e3: 0 12px 32px rgb(16 23 21 / 0.1);
+  --scrim: 17 19 24;
+  --scrim-alpha: 0.32;
+
+  /* Hairlines do the work; shadows only lift true overlays. */
+  --shadow-e1: 0 1px 1px rgb(17 19 24 / 0.03);
+  --shadow-e2: 0 1px 2px rgb(17 19 24 / 0.06);
+  --shadow-e3: 0 16px 40px rgb(17 19 24 / 0.18);
 
   color-scheme: light;
 }
 
 :root.dark {
-  --z-950: 12 17 16;
-  --z-900: 19 26 24;
-  --z-800: 32 41 38;
-  --z-700: 43 54 51;
-  --z-600: 124 135 131;
-  --z-500: 138 149 145;
-  --z-400: 152 162 158;
-  --z-300: 190 199 195;
-  --z-200: 233 238 236;
-  --z-100: 243 246 245;
-  --z-50: 250 252 251;
-  --white: 255 255 255;
+  --z-950: 14 16 19;
+  --z-900: 22 24 29;
+  --z-800: 38 42 49;
+  --z-700: 52 57 66;
+  --z-600: 122 130 143;
+  --z-500: 138 146 159;
+  --z-400: 154 161 174;
+  --z-300: 190 196 206;
+  --z-200: 226 229 235;
+  --z-100: 238 240 244;
+  --z-50: 246 247 249;
+  --white: 246 247 249;
 
-  --brand: 5 150 105;
-  --brand-hover: 4 120 87;
+  --brand: 22 143 100;
+  --brand-hover: 27 163 115;
   --brand-fg: 255 255 255;
-  --brand-soft: 6 78 59;
-  --brand-line: 6 95 70;
-  --brand-text: 52 211 153;
+  --brand-soft: 18 45 36;
+  --brand-line: 28 74 57;
+  --brand-text: 61 199 145;
 
-  --bubble-user: 6 44 34;
-  --bubble-user-line: 6 78 59;
-  --bubble-ai: 24 32 30;
-  --bubble-ai-line: 40 51 47;
-  --plan-bg: 44 30 74;
-  --plan-line: 76 51 128;
-  --plan-text: 196 181 253;
-  --snippet: 252 211 77;
+  --bubble-user: 17 40 32;
+  --bubble-user-line: 28 66 51;
+  --bubble-ai: 28 31 37;
+  --bubble-ai-line: 44 49 58;
+  --plan-bg: 33 29 51;
+  --plan-line: 60 51 92;
+  --plan-text: 178 163 245;
+  --snippet: 226 179 82;
+
   --scrim: 0 0 0;
-  --scrim-alpha: 0.65;
+  --scrim-alpha: 0.6;
 
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-e2: 0 4px 12px rgb(0 0 0 / 0.35);
-  --shadow-e3: 0 12px 32px rgb(0 0 0 / 0.45);
+  --shadow-e1: none;
+  --shadow-e2: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-e3: 0 16px 40px rgb(0 0 0 / 0.55);
 
   color-scheme: dark;
 }
@@ -103,19 +106,36 @@ body,
 body {
   background-color: rgb(var(--z-950));
   color: rgb(var(--z-200));
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
-/* Numeric columns (counts, tokens, dates) stay aligned. */
+/* Machine-generated values line up in columns. */
 .tabular {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
-/* Scrollbars sized to the surface rather than the OS default chrome. */
+*::selection {
+  background-color: rgb(var(--brand) / 0.22);
+}
+
+/* Thin scrollbars sized to the surface, not the OS chrome. */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--z-700)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--z-700));
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {

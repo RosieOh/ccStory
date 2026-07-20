@@ -15,6 +15,14 @@ module.exports = {
           'Malgun Gothic',
           'sans-serif',
         ],
+        mono: [
+          'JetBrains Mono',
+          'SFMono-Regular',
+          'Menlo',
+          'Consolas',
+          'D2Coding',
+          'monospace',
+        ],
       },
       // The neutral scale and brand roles are CSS variables (see index.css), so
       // the same class set themes light and dark. Accent hues stay untouched.
@@ -60,9 +68,13 @@ module.exports = {
         e2: 'var(--shadow-e2)',
         e3: 'var(--shadow-e3)',
       },
+      // Console-grade radii: controls read as precise, not friendly.
       borderRadius: {
-        xl: '0.875rem',
-        '2xl': '1.125rem',
+        DEFAULT: '4px',
+        md: '5px',
+        lg: '6px',
+        xl: '8px',
+        '2xl': '10px',
       },
       transitionTimingFunction: {
         out: 'cubic-bezier(.22,.61,.36,1)',
