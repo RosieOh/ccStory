@@ -95,7 +95,7 @@ function Segmented<T extends string>({
 }) {
   return (
     <div
-      className={`flex shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 ${
+      className={`flex shrink-0 rounded-md border border-zinc-800 bg-zinc-950 p-[2px] ${
         disabled ? 'pointer-events-none opacity-40' : ''
       }`}
     >
@@ -105,9 +105,9 @@ function Segmented<T extends string>({
           type="button"
           aria-pressed={value === v}
           onClick={() => onChange(v)}
-          className={`rounded-md px-2.5 py-1 text-xs transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+          className={`rounded-[3px] px-2 py-0.5 text-[11px] transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
             value === v
-              ? 'bg-zinc-900 font-medium text-white shadow-e1'
+              ? 'bg-zinc-900 font-medium text-white shadow-e2'
               : 'text-zinc-500 hover:text-zinc-200'
           }`}
         >
@@ -122,7 +122,7 @@ function Segmented<T extends string>({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[11px] font-medium text-zinc-500">{label}</span>
+      <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">{label}</span>
       {children}
     </div>
   )
@@ -148,7 +148,7 @@ const NAV_GROUPS: { label: string; items: { key: Tab; label: string; icon: TabIc
 
 /** Quiet secondary action — one shape for every non-primary button in the app. */
 const GHOST_BTN =
-  'rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-40'
+  'rounded-md border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-40'
 
 type Command = { id: string; label: string; hint?: string; run: () => void }
 
@@ -544,26 +544,19 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span
-            aria-hidden
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-sm font-bold text-brand-fg shadow-e1"
-          >
-            CV
-          </span>
-          <div className="min-w-0">
-            <h1 className="truncate text-[15px] font-semibold tracking-tight text-white">
-              Claude Vault
-            </h1>
-            <p className="truncate text-xs text-zinc-500">로컬 Claude Code 대화 검색 · 재사용</p>
-          </div>
+      <header className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-900 px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span aria-hidden className="h-2 w-2 shrink-0 rounded-[2px] bg-brand" />
+          <h1 className="truncate text-[13px] font-semibold tracking-tight text-white">
+            Claude Vault
+          </h1>
+          <span className="truncate text-[11px] text-zinc-500">로컬 대화 인덱스</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            className="rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
+            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
             title="테마 전환"
           >
             {theme === 'dark' ? '라이트' : '다크'}
@@ -571,7 +564,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="rounded-lg border border-zinc-800 px-2.5 py-1.5 font-mono text-xs text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
+            className="rounded-md border border-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
             title="명령 팔레트"
           >
             ⌘K
@@ -586,7 +579,7 @@ export default function App() {
           )}
           <button
             type="button"
-            className="rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-brand-fg shadow-e1 transition-colors duration-150 ease-out hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            className="rounded-md bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             onClick={async () => {
               const r = await window.vault.reindex()
               setStatus(
@@ -605,10 +598,10 @@ export default function App() {
 
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
-          <nav className="space-y-5 p-3">
+          <nav className="space-y-3 p-2">
             {NAV_GROUPS.map((group) => (
               <div key={group.label}>
-                <p className="mb-1.5 px-2 text-[11px] font-medium text-zinc-500">{group.label}</p>
+                <p className="mb-1 px-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{group.label}</p>
                 <div className="flex flex-col gap-0.5">
                   {group.items.map((item) => {
                     const active = tab === item.key
@@ -618,9 +611,9 @@ export default function App() {
                         type="button"
                         onClick={() => setTab(item.key)}
                         aria-current={active ? 'page' : undefined}
-                        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                        className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
                           active
-                            ? 'bg-brand font-medium text-brand-fg shadow-e1'
+                            ? 'bg-brand-soft font-medium text-brand-text'
                             : 'text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200'
                         }`}
                       >
@@ -634,16 +627,16 @@ export default function App() {
             ))}
           </nav>
 
-          <div className="flex min-h-0 flex-1 flex-col border-t border-zinc-800 p-3">
-            <div className="mb-1.5 flex items-center gap-2 px-2">
+          <div className="flex min-h-0 flex-1 flex-col border-t border-zinc-800 p-2">
+            <div className="mb-1 flex items-center gap-2 px-2">
               <Icon name="folder" className="text-zinc-500" />
-              <p className="text-[11px] font-medium text-zinc-500">프로젝트</p>
-              <span className="ml-auto text-[11px] tabular text-zinc-500">{projects.length}</span>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">프로젝트</p>
+              <span className="ml-auto font-mono text-[11px] tabular text-zinc-600">{projects.length}</span>
             </div>
             <div className="-mr-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
               <button
                 type="button"
-                className={`flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors duration-150 ease-out ${
+                className={`flex w-full items-center rounded-md px-2 py-1 text-left text-[13px] transition-colors duration-150 ease-out ${
                   projectId === undefined
                     ? 'bg-brand-soft font-medium text-brand-text'
                     : 'text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200'
@@ -658,7 +651,7 @@ export default function App() {
                   <button
                     key={p.id}
                     type="button"
-                    className={`block w-full rounded-lg px-2.5 py-1.5 text-left transition-colors duration-150 ease-out ${
+                    className={`block w-full rounded-md px-2 py-1 text-left transition-colors duration-150 ease-out ${
                       active
                         ? 'bg-brand-soft text-brand-text'
                         : 'text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200'
@@ -677,7 +670,7 @@ export default function App() {
                           {p.tool}
                         </span>
                       ) : null}
-                      <span className="ml-auto shrink-0 text-[11px] tabular text-zinc-500">
+                      <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
                         {p.sessionCount}
                       </span>
                     </span>
@@ -691,12 +684,12 @@ export default function App() {
         <main className="min-w-0 flex-1 overflow-hidden">
           {tab === 'search' && (
             <div className="flex h-full flex-col">
-              <div className="border-b border-zinc-800 bg-zinc-900 px-5 py-3">
+              <div className="border-b border-zinc-800 bg-zinc-900 px-3 py-2">
                 <div className="flex items-center gap-3">
                   <div className="relative min-w-0 flex-1">
                     <Icon
                       name="search"
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600"
                     />
                     <input
                       ref={searchInputRef}
@@ -704,7 +697,7 @@ export default function App() {
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="키워드, 문장, 기억에 남는 단어…"
                       aria-label="검색어"
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-2.5 pl-9 pr-3 text-sm text-white outline-none transition duration-150 ease-out placeholder:text-zinc-500 focus:border-brand focus:bg-zinc-900 focus:ring-2 focus:ring-brand/25"
+                      className="w-full rounded-md border border-zinc-800 bg-zinc-950 py-1.5 pl-8 pr-3 text-[13px] text-white outline-none transition duration-150 ease-out placeholder:text-zinc-600 focus:border-brand focus:bg-zinc-900 focus:ring-1 focus:ring-brand/40"
                     />
                   </div>
                   <Segmented
@@ -722,7 +715,7 @@ export default function App() {
                     type="button"
                     onClick={() => setInspectorOpen((v) => !v)}
                     aria-expanded={inspectorOpen}
-                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-xs transition-colors duration-150 ease-out ${
+                    className={`shrink-0 rounded-md border px-2 py-1 text-[11px] transition-colors duration-150 ease-out ${
                       activeFilterCount > 0
                         ? 'border-brand-line bg-brand-soft text-brand-text'
                         : 'border-zinc-800 text-zinc-500 hover:bg-zinc-950 hover:text-zinc-200'
@@ -731,23 +724,23 @@ export default function App() {
                     필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-1.5 font-mono text-[11px] text-zinc-600">
                   {query.trim()
                     ? `${fuzzyHits.length}건${loading ? ' · 검색 중…' : ''}`
                     : '검색어를 비우면 최근 세션과 플랜을 보여줍니다.'}
                 </p>
               </div>
-              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
-                {loading && <p className="text-sm text-zinc-500">검색 중…</p>}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {loading && <p className="p-3 font-mono text-[11px] text-zinc-500">검색 중…</p>}
                 {!loading && query.trim() === '' && searchScope !== 'plans' && recentSessions.length > 0 && (
-                  <section>
-                    <h3 className="mb-2.5 text-xs font-medium text-zinc-500">최근 세션</h3>
-                    <ul className="space-y-2">
+                  <section className="p-3">
+                    <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">최근 세션</h3>
+                    <ul className="space-y-1">
                       {recentSessions.map((s) => (
                         <li key={s.sessionId}>
                           <button
                             type="button"
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-3 text-left shadow-e1 transition duration-150 ease-out hover:border-brand-line hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-2 text-left transition-colors duration-100 hover:border-brand-line hover:bg-brand-soft/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
                             onClick={() =>
                               setTranscriptOpen({
                                 sessionId: s.sessionId,
@@ -758,19 +751,19 @@ export default function App() {
                             }
                           >
                             <span className="flex items-baseline gap-2">
-                              <span className="min-w-0 truncate text-sm font-medium text-white">
+                              <span className="min-w-0 truncate text-[13px] font-medium text-white">
                                 {sidebarPrimaryLabel(s.projectName)}
                               </span>
-                              <span className="ml-auto shrink-0 text-[11px] tabular text-zinc-500">
+                              <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
                                 {new Date(s.mtime).toLocaleDateString()}
                               </span>
                             </span>
                             {s.preview ? (
-                              <span className="mt-1 block truncate text-xs text-zinc-400">
+                              <span className="mt-0.5 block truncate text-[12px] text-zinc-400">
                                 {s.preview}
                               </span>
                             ) : null}
-                            <span className="mt-1 block truncate font-mono text-[11px] text-zinc-500">
+                            <span className="mt-0.5 block truncate font-mono text-[11px] text-zinc-600">
                               {s.sessionFile}
                             </span>
                           </button>
@@ -780,14 +773,14 @@ export default function App() {
                   </section>
                 )}
                 {!loading && query.trim() === '' && searchScope !== 'messages' && recentPlans.length > 0 && (
-                  <section>
-                    <h3 className="mb-2.5 text-xs font-medium text-zinc-500">최근 플랜</h3>
-                    <ul className="space-y-2">
+                  <section className="px-3 pb-3">
+                    <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">최근 플랜</h3>
+                    <ul className="space-y-1">
                       {recentPlans.map((pl) => (
                         <li key={pl.id}>
                           <button
                             type="button"
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-3 text-left shadow-e1 transition duration-150 ease-out hover:border-plan-line hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-plan-text/30"
+                            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-2 text-left transition-colors duration-100 hover:border-plan-line hover:bg-plan-bg/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-plan-text"
                             onClick={() =>
                               setPlanPreview({
                                 planId: pl.id,
@@ -800,11 +793,11 @@ export default function App() {
                               <span className="min-w-0 truncate text-sm font-medium text-violet-600">
                                 {pl.title}
                               </span>
-                              <span className="ml-auto shrink-0 text-[11px] tabular text-zinc-500">
+                              <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
                                 {new Date(pl.mtime).toLocaleDateString()}
                               </span>
                             </span>
-                            <span className="mt-1 block truncate font-mono text-[11px] text-zinc-500">
+                            <span className="mt-0.5 block truncate font-mono text-[11px] text-zinc-600">
                               {pl.filePath}
                             </span>
                           </button>
@@ -814,7 +807,7 @@ export default function App() {
                   </section>
                 )}
                 {!loading && query.trim() !== '' && fuzzyHits.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-900 px-5 py-10 text-center">
+                  <div className="m-3 rounded-md border border-dashed border-zinc-700 px-5 py-10 text-center">
                     <p className="text-sm font-medium text-white">일치하는 결과가 없습니다</p>
                     <p className="mt-1 text-xs text-zinc-500">
                       정밀도를 「아무거나」로 낮추거나 기간 필터를 넓혀 보세요.
@@ -841,44 +834,57 @@ export default function App() {
                   ) : (
                     <article
                       key={h.messageId}
-                      className={`rounded-xl border bg-zinc-900 p-4 transition duration-150 ease-out ${
+                      className={`group border-b border-zinc-800 px-3 py-2.5 transition-colors duration-100 ${
                         i === activeResult
-                          ? 'border-brand ring-2 ring-brand/25 shadow-e2'
-                          : 'border-zinc-800 shadow-e1 hover:shadow-e2'
+                          ? 'bg-brand-soft/60'
+                          : 'hover:bg-zinc-900'
                       }`}
                     >
-                      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-zinc-500">
+                      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-600">
                           <span
-                            className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                            className={`rounded-[3px] px-1 py-px text-[10px] font-medium uppercase ${
                               h.role === 'user'
                                 ? 'bg-brand-soft text-brand-text'
-                                : 'bg-zinc-950 text-zinc-400'
+                                : 'bg-zinc-800 text-zinc-500'
                             }`}
                           >
-                            {h.role === 'user' ? '나' : h.role === 'assistant' ? 'Claude' : h.role}
+                            {h.role === 'user' ? 'me' : h.role === 'assistant' ? 'ai' : h.role}
                           </span>
-                          <span className="truncate font-medium text-zinc-300" title={h.projectSlug}>
+                          <span className="truncate font-sans font-medium text-zinc-300" title={h.projectSlug}>
                             {sidebarPrimaryLabel(h.projectName || h.projectSlug)}
                           </span>
-                          <span aria-hidden>·</span>
-                          <span className="truncate font-mono text-[11px]">{h.sessionFile}</span>
-                          {h.tsMs ? (
-                            <>
-                              <span aria-hidden>·</span>
-                              <span className="tabular">{formatTs(h.tsMs)}</span>
-                            </>
-                          ) : null}
+                          <span className="truncate">
+                            {h.sessionFile}:{h.lineIndex}
+                          </span>
+                          {h.tsMs ? <span className="tabular">{formatTs(h.tsMs)}</span> : null}
                           {messageClassLabel(h.messageClass) ? (
                             <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
                               {messageClassLabel(h.messageClass)}
                             </span>
                           ) : null}
                         </div>
-                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                        {/* Row actions stay out of the way until the row is
+                            hovered or keyboard-selected — density first. */}
+                        <div
+                          className={`flex shrink-0 items-center gap-1 transition-opacity duration-100 ${
+                            i === activeResult
+                              ? 'opacity-100'
+                              : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100'
+                          }`}
+                        >
+                          <label className="mr-1 flex items-center gap-1 text-[11px] text-zinc-500">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(h.messageId)}
+                              onChange={() => toggleSelect(h.messageId)}
+                              className="accent-brand"
+                            />
+                            선택
+                          </label>
                           <button
                             type="button"
-                            className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                            className={GHOST_BTN}
                             onClick={() => window.vault.copyText(h.body)}
                           >
                             복사
@@ -895,7 +901,7 @@ export default function App() {
                               })
                             }
                           >
-                            세션 전체
+                            세션
                           </button>
                           <button
                             type="button"
@@ -918,22 +924,12 @@ export default function App() {
                           >
                             템플릿
                           </button>
-                          <label className="flex items-center gap-1 text-xs text-zinc-400">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(h.messageId)}
-                              onChange={() => toggleSelect(h.messageId)}
-                            />
-                            보내기 선택
-                          </label>
                         </div>
                       </div>
-                      {/* Results are scanned, not conversed with: full width beats
-                          chat alignment here. Bubbles stay in the transcript. */}
-                      <p className="text-sm leading-relaxed text-snippet">« {h.snippet} »</p>
-                      <pre className="mt-2 max-h-48 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-relaxed text-zinc-300 [overflow-wrap:anywhere]">
+                      <p className="truncate text-[12px] text-snippet">« {h.snippet} »</p>
+                      <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-400 [overflow-wrap:anywhere]">
                         {h.body}
-                      </pre>
+                      </p>
                       <TagEditor messageId={h.messageId} tags={tags} onChange={loadTags} />
                     </article>
                   ),
@@ -1214,10 +1210,10 @@ export default function App() {
         </main>
 
         {tab === 'search' && inspectorOpen && (
-          <aside className="flex w-[300px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-900">
-            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+          <aside className="flex w-[276px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-900">
+            <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3">
               <div>
-                <h2 className="text-sm font-semibold text-white">검색 설정</h2>
+                <h2 className="text-[12px] font-semibold text-white">검색 설정</h2>
                 <p className="text-[11px] text-zinc-500">
                   {activeFilterCount > 0 ? `${activeFilterCount}개 적용됨` : '기본값'}
                 </p>
@@ -1243,7 +1239,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
               <Field label="정밀도">
                 <Segmented
                   value={matchMode}
@@ -1311,7 +1307,7 @@ export default function App() {
 
               <Field label="제외">
                 <div className="space-y-2">
-                  <label className="flex cursor-pointer items-start gap-2.5 text-xs text-zinc-300">
+                  <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
                     <input
                       type="checkbox"
                       checked={excludeMeta}
@@ -1324,7 +1320,7 @@ export default function App() {
                       <span className="block text-[11px] text-zinc-500">권한·제목 등 시스템 기록</span>
                     </span>
                   </label>
-                  <label className="flex cursor-pointer items-start gap-2.5 text-xs text-zinc-300">
+                  <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
                     <input
                       type="checkbox"
                       checked={excludeSubagents}
@@ -1355,7 +1351,7 @@ export default function App() {
                     type="button"
                     onClick={() => void createTag()}
                     disabled={!newTag.trim()}
-                    className="shrink-0 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="shrink-0 rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     추가
                   </button>
@@ -1391,17 +1387,18 @@ export default function App() {
         )}
       </div>
 
-      <footer className="flex items-center gap-3 border-t border-zinc-800 bg-zinc-900 px-5 py-2 text-xs text-zinc-500">
+      <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-zinc-800 bg-zinc-900 px-3 font-mono text-[11px] text-zinc-600">
         {status ? (
-          <span className="flex items-center gap-1.5 text-zinc-400">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-brand" />
+          <span className="flex items-center gap-1.5 truncate text-zinc-400">
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
             {status}
           </span>
         ) : (
-          <span>준비됨</span>
+          <span className="text-zinc-600">idle</span>
         )}
-        <span className="ml-auto tabular">
-          프로젝트 {projects.length} · 태그 {tags.length}
+        <span className="ml-auto shrink-0 tabular">
+          {tab === 'search' && query.trim() ? `hits ${fuzzyHits.length} · ` : ''}
+          projects {projects.length} · tags {tags.length}
         </span>
       </footer>
 
@@ -1448,41 +1445,40 @@ function PlanSearchHitCard({
     onStatus('플랜 전체를 복사했습니다.')
   }
 
+  // Same row rhythm as a message hit; plan-ness is carried by one small tag.
   return (
     <article
-      className={`rounded-xl border bg-plan-bg p-4 shadow-e1 ${
-        active ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-plan-line'
+      className={`group border-b border-zinc-800 px-3 py-2.5 transition-colors duration-100 ${
+        active ? 'bg-plan-bg' : 'hover:bg-zinc-900'
       }`}
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs text-zinc-500">
-          <span className="font-medium text-plan-text">플랜</span>
-          <span className="mx-1">·</span>
-          <span className="text-zinc-300" title={h.filePath}>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-600">
+          <span className="rounded-[3px] bg-plan-bg px-1 py-px text-[10px] font-medium uppercase text-plan-text">
+            plan
+          </span>
+          <span className="truncate font-sans font-medium text-zinc-300" title={h.filePath}>
             {h.title}
           </span>
+          <span className="truncate">{h.filePath}</span>
+          <span className="tabular">{new Date(h.mtime).toLocaleDateString()}</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-500"
-            onClick={() => void copyFull()}
-          >
-            전체 복사
+        <div
+          className={`flex shrink-0 items-center gap-1 transition-opacity duration-100 ${
+            active ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100'
+          }`}
+        >
+          <button type="button" className={GHOST_BTN} onClick={() => void copyFull()}>
+            복사
           </button>
-          <button
-            type="button"
-            className="rounded-md border border-plan-line px-2.5 py-1 text-xs text-plan-text hover:bg-plan-bg"
-            onClick={() => void toggle()}
-          >
-            {expanded ? '접기' : '본문 보기'}
+          <button type="button" className={GHOST_BTN} onClick={() => void toggle()}>
+            {expanded ? '접기' : '본문'}
           </button>
         </div>
       </div>
-      <p className="mb-1 font-mono text-[10px] text-zinc-600">{h.filePath}</p>
-      <p className="mb-2 text-sm text-snippet">« {h.snippet} »</p>
+      <p className="truncate text-[12px] text-snippet">« {h.snippet} »</p>
       {expanded && body !== null ? (
-        <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+        <div className="mt-2 max-h-64 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3">
           <Markdown>{body}</Markdown>
         </div>
       ) : null}
@@ -1813,20 +1809,20 @@ function TagEditor({
   }
 
   if (!tags.length) {
-    return <p className="mt-2 text-[11px] text-zinc-600">태그가 없습니다. 하단에서 생성하세요.</p>
+    return <p className="mt-1 text-[11px] text-zinc-600">태그 없음 — 우측 패널에서 추가</p>
   }
 
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="mt-1.5 flex flex-wrap gap-1">
       {tags.map((t) => (
         <button
           key={t.id}
           type="button"
           onClick={() => void toggle(t.id)}
-          className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors duration-150 ease-out ${
+          className={`rounded-[3px] border px-1.5 py-px text-[10px] transition-colors duration-100 ${
             selected.includes(t.id)
-              ? 'border-brand bg-brand font-medium text-brand-fg'
-              : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-brand-line hover:text-zinc-200'
+              ? 'border-brand-line bg-brand-soft font-medium text-brand-text'
+              : 'border-zinc-800 text-zinc-600 hover:border-brand-line hover:text-zinc-300'
           }`}
         >
           {t.name}
