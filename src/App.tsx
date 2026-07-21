@@ -146,6 +146,42 @@ const NAV_GROUPS: { label: string; items: { key: Tab; label: string; icon: TabIc
   },
 ]
 
+/** Rows rendered per transcript page, and the point where a body gets clamped. */
+const TRANSCRIPT_PAGE = 150
+const MAX_INLINE_BODY = 8000
+
+/** A single message body can exceed 700 KB; clamp it behind an explicit expand. */
+function TranscriptBody({ body, markdown }: { body: string; markdown: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const oversized = body.length > MAX_INLINE_BODY
+  const text = oversized && !expanded ? body.slice(0, MAX_INLINE_BODY) : body
+
+  return (
+    <>
+      {markdown ? (
+        <div className="max-h-[min(70vh,32rem)] max-w-full overflow-auto">
+          <Markdown>{text}</Markdown>
+        </div>
+      ) : (
+        <pre className="max-h-[min(70vh,32rem)] max-w-full overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-300 [overflow-wrap:anywhere]">
+          {text}
+        </pre>
+      )}
+      {oversized && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 text-[11px] text-brand-text hover:underline"
+        >
+          {expanded
+            ? '접기'
+            : `${(body.length / 1024).toFixed(0)}KB 중 ${(MAX_INLINE_BODY / 1024).toFixed(0)}KB 표시 — 전체 보기`}
+        </button>
+      )}
+    </>
+  )
+}
+
 /** Quiet secondary action — one shape for every non-primary button in the app. */
 const GHOST_BTN =
   'rounded-md border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-40'
@@ -1597,6 +1633,31 @@ function SessionTranscriptModal({
 
   const toolRowCount = useMemo(() => rows.filter(isToolRow).length, [rows])
 
+  // Sessions reach ~7k rows and 2.6 MB of text. Rendering that in one pass locks
+  // the window, so grow the rendered slice as the user scrolls.
+  const [renderLimit, setRenderLimit] = useState(TRANSCRIPT_PAGE)
+  const shownRows = useMemo(() => visibleRows.slice(0, renderLimit), [visibleRows, renderLimit])
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setRenderLimit(TRANSCRIPT_PAGE)
+  }, [open.sessionId, showMeta, showToolResults])
+
+  useEffect(() => {
+    const node = sentinelRef.current
+    if (!node || shownRows.length >= visibleRows.length) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setRenderLimit((n) => n + TRANSCRIPT_PAGE)
+        }
+      },
+      { rootMargin: '400px' },
+    )
+    io.observe(node)
+    return () => io.disconnect()
+  }, [shownRows.length, visibleRows.length])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -1726,7 +1787,7 @@ function SessionTranscriptModal({
             ].filter(Boolean)
             return <p className="mb-2 text-[11px] text-zinc-500">{bits.join(' · ')} 숨김</p>
           })()}
-          {visibleRows.map((m) => {
+          {shownRows.map((m) => {
             const isHi = m.lineIndex === open.highlightLine
             const align = chatAlignForDialog(m.role, m.messageClass)
             const isUser = m.role === 'user'
@@ -1761,19 +1822,20 @@ function SessionTranscriptModal({
                       복사
                     </button>
                   </div>
-                  {showMarkdown && shouldRenderMarkdown(m) ? (
-                    <div className="max-h-[min(70vh,32rem)] max-w-full overflow-auto">
-                      <Markdown>{m.body}</Markdown>
-                    </div>
-                  ) : (
-                    <pre className="max-h-[min(70vh,32rem)] max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-zinc-200 [overflow-wrap:anywhere]">
-                      {m.body}
-                    </pre>
-                  )}
+                  <TranscriptBody
+                    body={m.body}
+                    markdown={showMarkdown && shouldRenderMarkdown(m)}
+                  />
                 </div>
               </div>
             )
           })}
+          {shownRows.length < visibleRows.length && (
+            <div ref={sentinelRef} className="py-4 text-center font-mono text-[11px] text-zinc-600">
+              {shownRows.length.toLocaleString()} / {visibleRows.length.toLocaleString()} 행 —
+              스크롤하면 더 불러옵니다
+            </div>
+          )}
         </div>
       </div>
     </div>

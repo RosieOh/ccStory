@@ -10,10 +10,22 @@ export function openVaultDb(dbFile: string): DbHandle {
   const dir = path.dirname(dbFile)
   fs.mkdirSync(dir, { recursive: true })
   const db = new Database(dbFile)
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
-  migrate(db)
-  return db
+  try {
+    db.pragma('journal_mode = WAL')
+    db.pragma('foreign_keys = ON')
+    migrate(db)
+    return db
+  } catch (err) {
+    // A corrupt file only surfaces once a statement runs. Close the handle so
+    // the caller can quarantine the file — on Windows an open handle locks it
+    // and the rename would fail with EBUSY.
+    try {
+      db.close()
+    } catch {
+      /* handle may already be unusable */
+    }
+    throw err
+  }
 }
 
 function migrate(db: DbHandle) {
