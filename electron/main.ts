@@ -1,6 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
-import { app, BrowserWindow, clipboard, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import chokidar from 'chokidar'
 import { openVaultDb } from './db.js'
 import { defaultClaudePlansRoot, defaultClaudeProjectsRoot } from './claudeRoots.js'
@@ -78,6 +78,37 @@ async function runInitialIndex() {
   startWatcher()
 }
 
+/**
+ * The renderer displays text harvested from log files we do not control, so it
+ * is treated as untrusted: links may only leave the app through the OS browser,
+ * and the window itself must never navigate away from the app bundle.
+ */
+function applyNavigationPolicy(win: BrowserWindow) {
+  const devOrigin = process.env.VITE_DEV_SERVER_URL
+
+  const openExternally = (url: string) => {
+    // Only ever hand well-known web schemes to the OS; file:/ javascript: etc. are dropped.
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+  }
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternally(url)
+    return { action: 'deny' }
+  })
+
+  win.webContents.on('will-navigate', (event, url) => {
+    const sameApp = devOrigin ? url.startsWith(devOrigin) : url.startsWith('file://')
+    if (!sameApp) {
+      event.preventDefault()
+      openExternally(url)
+    }
+  })
+
+  // Nothing in this app needs a webview, permissions, or remote content.
+  win.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  win.webContents.session.setPermissionRequestHandler((_wc, _perm, callback) => callback(false))
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -85,12 +116,22 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     title: 'Claude Vault',
+    backgroundColor: '#fafafb',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // The preload only touches contextBridge/ipcRenderer, so the renderer can
+      // run fully sandboxed.
+      sandbox: true,
+      webviewTag: false,
+      spellcheck: false,
     },
   })
+
+  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  applyNavigationPolicy(mainWindow)
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
@@ -428,6 +469,40 @@ function registerIpc() {
   })
 }
 
+/**
+ * Content-Security-Policy applied to every response. The renderer never loads
+ * remote code or makes network requests, so everything but same-origin assets is
+ * denied. Vite's dev server needs inline/eval for HMR, so the dev policy is
+ * loosened only for scripts while still blocking remote origins.
+ */
+function applyContentSecurityPolicy() {
+  const dev = Boolean(process.env.VITE_DEV_SERVER_URL)
+  const scriptSrc = dev ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self'"
+  const connectSrc = dev ? "connect-src 'self' ws: http://localhost:*" : "connect-src 'none'"
+  const policy = [
+    "default-src 'none'",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    connectSrc,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+  ].join('; ')
+
+  const { session } = mainWindow!.webContents
+  session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [policy],
+      },
+    })
+  })
+}
+
 function startWatcher() {
   // chokidar v4 removed glob support: watch the roots directly (recursive by default)
   // and filter by extension in the dispatch handler. Skip heavy/irrelevant subtrees.
@@ -458,24 +533,82 @@ function startWatcher() {
   watcher.on('unlink', (p) => dispatch(p, 'unlink'))
 }
 
-app.whenReady().then(() => {
-  claudeRoot = defaultClaudeProjectsRoot()
-  plansRoot = defaultClaudePlansRoot()
-  if (!fs.existsSync(claudeRoot)) {
-    fs.mkdirSync(claudeRoot, { recursive: true })
+/**
+ * The vault DB is a rebuildable cache of ~/.claude, so a corrupt or unreadable
+ * file must never block startup: quarantine it and index again from scratch.
+ */
+function openVaultDbResilient(): ReturnType<typeof openVaultDb> {
+  const file = vaultDbPath()
+  try {
+    return openVaultDb(file)
+  } catch (err) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    console.error('[vault] failed to open database, rebuilding:', err)
+    for (const suffix of ['', '-wal', '-shm']) {
+      const p = `${file}${suffix}`
+      try {
+        if (fs.existsSync(p)) fs.renameSync(p, `${p}.corrupt-${stamp}`)
+      } catch {
+        try {
+          fs.rmSync(p, { force: true })
+        } catch {
+          /* nothing else we can do; the retry below will surface it */
+        }
+      }
+    }
+    return openVaultDb(file)
   }
-  if (!fs.existsSync(plansRoot)) {
-    fs.mkdirSync(plansRoot, { recursive: true })
+}
+
+function reportFatal(scope: string, err: unknown) {
+  const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
+  console.error(`[vault] ${scope}:`, message)
+  if (app.isReady()) {
+    dialog.showMessageBox({
+      type: 'error',
+      title: 'Claude Vault',
+      message: '예기치 못한 오류가 발생했습니다.',
+      detail: `${scope}\n\n${message.slice(0, 1500)}`,
+      buttons: ['계속'],
+    })
   }
-  db = openVaultDb(vaultDbPath())
-  registerIpc()
-  // Show the window first, then index in the background so a large ~/.claude
-  // does not delay first paint. The watcher starts once the initial pass finishes.
-  createWindow()
-  mainWindow?.webContents.once('did-finish-load', () => {
-    void runInitialIndex()
+}
+
+// A background indexing failure must not take the whole app down.
+process.on('uncaughtException', (err) => reportFatal('uncaughtException', err))
+process.on('unhandledRejection', (err) => reportFatal('unhandledRejection', err))
+
+// Two instances writing one SQLite file is a corruption risk — focus the first.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
   })
-})
+
+  app.whenReady().then(() => {
+    claudeRoot = defaultClaudeProjectsRoot()
+    plansRoot = defaultClaudePlansRoot()
+    for (const dir of [claudeRoot, plansRoot]) {
+      try {
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      } catch (err) {
+        console.error('[vault] cannot create data dir', dir, err)
+      }
+    }
+    db = openVaultDbResilient()
+    registerIpc()
+    // Show the window first, then index in the background so a large ~/.claude
+    // does not delay first paint. The watcher starts once the initial pass finishes.
+    createWindow()
+    applyContentSecurityPolicy()
+    mainWindow?.webContents.once('did-finish-load', () => {
+      void runInitialIndex().catch((err) => reportFatal('초기 인덱싱', err))
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
@@ -483,4 +616,12 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
+
+app.on('before-quit', () => {
+  try {
+    db?.close()
+  } catch {
+    /* closing a already-closed handle is fine */
+  }
 })
