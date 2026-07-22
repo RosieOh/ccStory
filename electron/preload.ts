@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { ModelPrice } from '../shared/pricing.js'
 import { IPC } from '../shared/ipc.js'
 import type {
   ExportOptions,
@@ -42,6 +43,10 @@ contextBridge.exposeInMainWorld('vault', {
     ipcRenderer.invoke(IPC.sessionTranscript, sessionId),
   recentSessions: (projectId?: number | null): Promise<RecentSessionRow[]> =>
     ipcRenderer.invoke(IPC.recentSessions, projectId ?? null),
+  pricesList: (): Promise<ModelPrice[]> => ipcRenderer.invoke(IPC.pricesList),
+  pricesSave: (prices: ModelPrice[]): Promise<ModelPrice[]> =>
+    ipcRenderer.invoke(IPC.pricesSave, prices),
+  pricesReset: (): Promise<ModelPrice[]> => ipcRenderer.invoke(IPC.pricesReset),
   templatesList: (): Promise<TemplateRow[]> => ipcRenderer.invoke(IPC.templatesList),
   templateCreate: (name: string, body: string): Promise<number> =>
     ipcRenderer.invoke(IPC.templateCreate, name, body),
