@@ -17,7 +17,10 @@ This repository is the **Claude Vault** Electron + React app. Use this file as a
 
 ## Invariants
 
-- **Never write** under `~/.claude/` — read-only indexing only.
+- **Never write** under `~/.claude/projects/` or `~/.claude/plans/` — these hold the user's
+  transcripts and plans; Vault only ever reads them. The app itself writes nowhere under
+  `~/.claude/` at all. User-installed tooling (e.g. the `/ingest` skill in `~/.claude/skills/`)
+  may write outside those two roots when the user asks for it — see [ADR-0004](docs/decisions/0004-write-scope-under-claude-home.md).
 - **No telemetry** — do not add network calls without an explicit, reviewed ADR.
 - **SQLite migrations** — bump schema carefully in `electron/db.ts` and document in `docs/architecture.md`.
 
