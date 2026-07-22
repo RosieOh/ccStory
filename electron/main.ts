@@ -10,6 +10,7 @@ import { fullReindexPlans, indexPlanSinglePath, isPathUnderPlansRoot } from './p
 import { unifiedSearch } from './search.js'
 import { checkForUpdates, getUpdateStatus, initAutoUpdate, installUpdate } from './updater.js'
 import { fileTimeline, listFiles } from './files.js'
+import { listPrices, resetPrices, savePrices } from './prices.js'
 import { computeStats } from './stats.js'
 import { IPC } from '../shared/ipc.js'
 import type {
@@ -31,6 +32,7 @@ import {
   sanitizeTagIds,
   sanitizeTemplateBody,
   sanitizeTemplateId,
+  sanitizePrices,
   sanitizeTemplateName,
 } from './ipcGuards.js'
 
@@ -265,6 +267,15 @@ function registerIpc() {
       .all() as RecentSessionRow[]
   })
 
+  ipcMain.handle(IPC.pricesList, async () => (db ? listPrices(db) : []))
+
+  ipcMain.handle(IPC.pricesSave, async (_e, raw: unknown) => {
+    if (!db) return []
+    return savePrices(db, sanitizePrices(raw))
+  })
+
+  ipcMain.handle(IPC.pricesReset, async () => (db ? resetPrices(db) : []))
+
   ipcMain.handle(IPC.templatesList, async () => {
     if (!db) return []
     return db
@@ -277,7 +288,7 @@ function registerIpc() {
 
   ipcMain.handle(IPC.templateCreate, async (_e, rawName: unknown, rawBody: unknown) => {
     if (!db) return 0
-    const name = sanitizeTemplateName(rawName) || '무제 템플릿'
+    const name = sanitizeTemplateName(rawName)
     const body = sanitizeTemplateBody(rawBody)
     const now = Date.now()
     const r = db
@@ -290,7 +301,7 @@ function registerIpc() {
     if (!db) return
     const id = sanitizeTemplateId(rawId)
     if (id == null) return
-    const name = sanitizeTemplateName(rawName) || '무제 템플릿'
+    const name = sanitizeTemplateName(rawName)
     const body = sanitizeTemplateBody(rawBody)
     db.prepare(`UPDATE templates SET name = ?, body = ?, updated_at = ? WHERE id = ?`).run(
       name,
@@ -580,16 +591,31 @@ function openVaultDbResilient(): ReturnType<typeof openVaultDb> {
   }
 }
 
+/**
+ * Main-process dialogs can fire before any window exists, so they cannot reach
+ * the renderer's locale. Fall back to the OS locale — the only signal available
+ * this early.
+ */
+function mainLocale(): 'ko' | 'en' {
+  return app.getLocale().toLowerCase().startsWith('ko') ? 'ko' : 'en'
+}
+
+const MAIN_STRINGS = {
+  ko: { fatal: '예기치 못한 오류가 발생했습니다.', continue: '계속', initialIndex: '초기 인덱싱' },
+  en: { fatal: 'Something went wrong.', continue: 'Continue', initialIndex: 'initial indexing' },
+} as const
+
 function reportFatal(scope: string, err: unknown) {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
   console.error(`[vault] ${scope}:`, message)
   if (app.isReady()) {
+    const s = MAIN_STRINGS[mainLocale()]
     dialog.showMessageBox({
       type: 'error',
       title: 'Claude Vault',
-      message: '예기치 못한 오류가 발생했습니다.',
+      message: s.fatal,
       detail: `${scope}\n\n${message.slice(0, 1500)}`,
-      buttons: ['계속'],
+      buttons: [s.continue],
     })
   }
 }
@@ -625,7 +651,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow()
     applyContentSecurityPolicy()
     mainWindow?.webContents.once('did-finish-load', () => {
-      void runInitialIndex().catch((err) => reportFatal('초기 인덱싱', err))
+      void runInitialIndex().catch((err) => reportFatal(MAIN_STRINGS[mainLocale()].initialIndex, err))
       if (mainWindow) initAutoUpdate(mainWindow)
     })
   })
