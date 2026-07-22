@@ -1,3 +1,4 @@
+import type { ModelPrice } from '../shared/pricing.js'
 import type { ExportOptions, SearchFilters } from '../shared/ipc.js'
 
 const MAX_SEARCH_LIMIT = 200
@@ -124,6 +125,35 @@ export function sanitizeTagIds(raw: unknown): number[] {
     const id = positiveIntOrNull(x)
     if (id != null) out.push(id)
     if (out.length >= 500) break
+  }
+  return out
+}
+
+/** Prices arrive from the renderer as free-form JSON; coerce to finite, non-negative rates. */
+export function sanitizePrices(raw: unknown): ModelPrice[] {
+  if (!Array.isArray(raw)) return []
+  const rate = (v: unknown): number => {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0) return 0
+    // Nothing plausible costs more than $10k/MTok; clamp rather than reject so a
+    // fat-fingered edit degrades to a bounded number instead of dropping the row.
+    return Math.min(n, 10_000)
+  }
+  const out: ModelPrice[] = []
+  const seen = new Set<string>()
+  for (const x of raw.slice(0, 200)) {
+    if (!x || typeof x !== 'object') continue
+    const r = x as Record<string, unknown>
+    const model = String(r.model ?? '').trim().slice(0, 120)
+    if (!model || seen.has(model)) continue
+    seen.add(model)
+    out.push({
+      model,
+      inputPerMTok: rate(r.inputPerMTok),
+      outputPerMTok: rate(r.outputPerMTok),
+      cacheReadPerMTok: rate(r.cacheReadPerMTok),
+      cacheWritePerMTok: rate(r.cacheWritePerMTok),
+    })
   }
   return out
 }
