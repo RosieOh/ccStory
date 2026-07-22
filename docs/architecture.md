@@ -85,6 +85,26 @@ Run `npm run poc` to print aggregated `contentKinds` from your machine. Extend t
 - `tags`, `message_tags` — many-to-many tagging.
 - `templates` — reusable prompt bodies with `{{variable}}` placeholders (name/body/timestamps).
 - `projects.tool` — source tool id (`claude` \| `codex` \| …) set by the indexing adapter.
+- `file_refs` — reverse index of file paths mentioned in tool payloads (`message_id` + `path` + `basename`), powering the Files tab.
+- `model_prices` — user-editable USD price list, per million tokens (`input`/`output`/`cache_read`/`cache_write`). Seeded once from the dated defaults in `shared/pricing.ts`; user edits always win and are never re-seeded. **Deliberately not tied to `SCHEMA_VERSION`** — it stores no parsed transcript data, so adding it needs no reindex.
+
+## Cost estimation
+
+`shared/pricing.ts` turns the token columns already captured on `messages` into a USD estimate. Two rules keep it honest:
+
+- **Prices are seeded, not baked in.** `DEFAULT_PRICES` is dated by `PRICES_AS_OF` and shown in the editor; the `model_prices` row always overrides it. Published rates change, and a silently stale constant is worse than a visibly editable table.
+- **Unpriced models are excluded, not zeroed.** `costOf()` returns `null` when no price row matches, and the UI reports the count separately — a `$0` line would read as "this was free". Models with zero recorded tokens (Claude Code's `<synthetic>` placeholder) are dropped before that count is taken.
+
+Model ids are matched by **longest prefix**, so the dated ids in transcripts (`claude-haiku-4-5-20251001`) resolve to their base entry, and a specific override always beats a broader one regardless of row order.
+
+## Localization
+
+`shared/i18n.ts` holds a typed dictionary; `ko` is the source of truth and `Messages` is derived from it, so a key added to `ko` and missing from `en` is a **type error**, not a runtime blank. `src/i18n.tsx` provides `I18nProvider` / `useI18n` / `useT`, persists the choice to `localStorage` (`vault-locale`), and falls back to the browser language. Dates and numbers go through `BCP47[locale]` rather than the OS default.
+
+Two things stay outside the dictionary on purpose:
+
+- **Main-process dialogs** can fire before any window exists, so they cannot read the renderer's locale; they use `app.getLocale()` and a small inline string table.
+- **Operational labels written by the parser** (`[도구]`, `[대기열] dequeue`, …) are stored *in the DB*, so translating them would require a full reindex on every language switch. They are left stable.
 
 ## Tool adapters
 
