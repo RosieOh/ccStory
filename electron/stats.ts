@@ -1,4 +1,5 @@
 import type { DbHandle } from './db.js'
+import type { ModelTokenRow } from '../shared/ipc.js'
 import type { StatsPayload } from '../shared/ipc.js'
 
 const STOP = new Set([
@@ -76,14 +77,16 @@ export function computeStats(db: DbHandle): StatsPayload {
       `SELECT model,
               COUNT(*) AS messages,
               COALESCE(SUM(input_tokens), 0) AS input,
-              COALESCE(SUM(output_tokens), 0) AS output
+              COALESCE(SUM(output_tokens), 0) AS output,
+              COALESCE(SUM(cache_read_tokens), 0) AS cacheRead,
+              COALESCE(SUM(cache_creation_tokens), 0) AS cacheCreation
        FROM messages
        WHERE model IS NOT NULL AND model != ''
        GROUP BY model
        ORDER BY (input + output) DESC, messages DESC
-       LIMIT 20`,
+       LIMIT 40`,
     )
-    .all() as { model: string; messages: number; input: number; output: number }[]
+    .all() as ModelTokenRow[]
 
   // Prefer real per-message timestamps (schema v4+); fall back to session mtime
   // for DBs indexed before timestamps were captured.
