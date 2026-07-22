@@ -21,6 +21,9 @@ export const IPC = {
   templateUpdate: 'vault:templateUpdate',
   templateDelete: 'vault:templateDelete',
   filesList: 'vault:filesList',
+  pricesList: 'vault:pricesList',
+  pricesSave: 'vault:pricesSave',
+  pricesReset: 'vault:pricesReset',
   fileTimeline: 'vault:fileTimeline',
   updateCheck: 'vault:updateCheck',
   updateInstall: 'vault:updateInstall',
@@ -184,6 +187,16 @@ export type TokenTotals = {
   cacheCreation: number
 }
 
+/** Assistant turns and full token usage for one model — the input to cost estimation. */
+export type ModelTokenRow = {
+  model: string
+  messages: number
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+}
+
 export type StatsPayload = {
   totalProjects: number
   totalSessions: number
@@ -194,7 +207,7 @@ export type StatsPayload = {
   /** Real token usage summed from assistant `message.usage` (schema v4+). */
   tokenTotals: TokenTotals
   /** Per-model breakdown of assistant turns and their token usage. */
-  tokensByModel: { model: string; messages: number; input: number; output: number }[]
+  tokensByModel: ModelTokenRow[]
   /** True when `activityByDay` is derived from real message timestamps rather than file mtime. */
   activityFromTimestamps: boolean
 }
