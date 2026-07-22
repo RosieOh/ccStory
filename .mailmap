@@ -1,0 +1,10 @@
+# 동일 인물(RosieOh)이 여러 기기/계정에서 서로 다른 이름·이메일로 남긴 커밋을
+# 하나의 정식 신원으로 통일한다. 히스토리(SHA)는 변경하지 않으며,
+# git log / git shortlog -sne / git blame 및 GitHub 기여자 그래프에 모두
+# "RosieOh <20172207@gm.hannam.ac.kr>" 로 표시된다.
+#
+# 형식: 정식이름 <정식이메일> 기존이름 <기존이메일>
+
+RosieOh <20172207@gm.hannam.ac.kr> RosieOh <dhxogns920@gmail.com>
+RosieOh <20172207@gm.hannam.ac.kr> TaehunOh <104690434+RosieOh@users.noreply.github.com>
+RosieOh <20172207@gm.hannam.ac.kr> GitHub <noreply@github.com>
