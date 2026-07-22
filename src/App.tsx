@@ -8,6 +8,7 @@ import type {
   UpdateStatus,
   MatchMode,
   MessageClass,
+  ModelTokenRow,
   PlanHit,
   PlanListRow,
   ProjectRow,
@@ -29,6 +30,9 @@ import {
 } from './chatBubbleLayout'
 import { Markdown } from './Markdown'
 import { extractTemplateVariables, renderTemplate } from '../shared/templates'
+import { useI18n, useT } from './i18n'
+import { BCP47, LOCALES, LOCALE_LABEL, type Locale, type MessageKey } from '../shared/i18n'
+import { PRICES_AS_OF, costOf, formatUsd, type ModelPrice } from '../shared/pricing'
 
 type Tab = 'search' | 'files' | 'favorites' | 'templates' | 'stats' | 'export'
 
@@ -132,21 +136,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-const NAV_GROUPS: { label: string; items: { key: Tab; label: string; icon: TabIcon }[] }[] = [
+const NAV_GROUPS: {
+  labelKey: MessageKey
+  items: { key: Tab; labelKey: MessageKey; icon: TabIcon }[]
+}[] = [
   {
-    label: '탐색',
+    labelKey: 'nav.group.explore',
     items: [
-      { key: 'search', label: '검색', icon: 'search' },
-      { key: 'files', label: '파일', icon: 'file' },
-      { key: 'favorites', label: '즐겨찾기', icon: 'star' },
-      { key: 'templates', label: '템플릿', icon: 'template' },
+      { key: 'search', labelKey: 'nav.search' as const, icon: 'search' },
+      { key: 'files', labelKey: 'nav.files' as const, icon: 'file' },
+      { key: 'favorites', labelKey: 'nav.favorites' as const, icon: 'star' },
+      { key: 'templates', labelKey: 'nav.templates' as const, icon: 'template' },
     ],
   },
   {
-    label: '분석',
+    labelKey: 'nav.group.analyze',
     items: [
-      { key: 'stats', label: '통계', icon: 'chart' },
-      { key: 'export', label: '보내기', icon: 'export' },
+      { key: 'stats', labelKey: 'nav.stats' as const, icon: 'chart' },
+      { key: 'export', labelKey: 'nav.export' as const, icon: 'export' },
     ],
   },
 ]
@@ -157,6 +164,7 @@ const MAX_INLINE_BODY = 8000
 
 /** A single message body can exceed 700 KB; clamp it behind an explicit expand. */
 function TranscriptBody({ body, markdown }: { body: string; markdown: boolean }) {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   const oversized = body.length > MAX_INLINE_BODY
   const text = oversized && !expanded ? body.slice(0, MAX_INLINE_BODY) : body
@@ -179,8 +187,11 @@ function TranscriptBody({ body, markdown }: { body: string; markdown: boolean })
           className="mt-1 text-[11px] text-brand-text hover:underline"
         >
           {expanded
-            ? '접기'
-            : `${(body.length / 1024).toFixed(0)}KB 중 ${(MAX_INLINE_BODY / 1024).toFixed(0)}KB 표시 — 전체 보기`}
+            ? t('action.collapse')
+            : t('transcript.clamped', {
+                total: (body.length / 1024).toFixed(0),
+                shown: (MAX_INLINE_BODY / 1024).toFixed(0),
+              })}
         </button>
       )}
     </>
@@ -221,9 +232,9 @@ function sinceMsFor(range: DateRange): number | undefined {
 }
 
 /** Short local timestamp for hit cards; empty string when unknown. */
-function formatTs(ms: number | null | undefined): string {
+function formatTs(ms: number | null | undefined, locale: Locale): string {
   if (ms == null) return ''
-  return new Date(ms).toLocaleString()
+  return new Date(ms).toLocaleString(BCP47[locale])
 }
 
 /** 1_234_567 → "1.2M", 12_300 → "12.3K" — compact token counts for stat tiles. */
@@ -233,13 +244,15 @@ function formatCompact(n: number): string {
   return String(n)
 }
 
-function messageClassLabel(c: MessageClass): string | null {
-  if (c === 'meta') return '메타'
-  if (c === 'other') return '기타'
+/** Returns a dictionary key, not text — the caller owns translation. */
+function messageClassKey(c: MessageClass): MessageKey | null {
+  if (c === 'meta') return 'class.meta'
+  if (c === 'other') return 'class.other'
   return null
 }
 
 export default function App() {
+  const { locale, setLocale, t } = useI18n()
   const [tab, setTab] = useState<Tab>('search')
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [projectId, setProjectId] = useState<number | undefined>(undefined)
@@ -460,28 +473,33 @@ export default function App() {
   const commands = useMemo<Command[]>(() => {
     const tabCmds: Command[] = (
       [
-        ['search', '검색'],
-        ['files', '파일'],
-        ['favorites', '즐겨찾기'],
-        ['templates', '템플릿'],
-        ['stats', '통계'],
-        ['export', '보내기'],
+        ['search', 'nav.search'],
+        ['files', 'nav.files'],
+        ['favorites', 'nav.favorites'],
+        ['templates', 'nav.templates'],
+        ['stats', 'nav.stats'],
+        ['export', 'nav.export'],
       ] as const
-    ).map(([k, label]) => ({ id: `tab:${k}`, label: `이동: ${label}`, hint: '탭', run: () => setTab(k) }))
+    ).map(([k, labelKey]) => ({
+      id: `tab:${k}`,
+      label: t('palette.goto', { label: t(labelKey) }),
+      hint: t('palette.hint.tab'),
+      run: () => setTab(k),
+    }))
     const actions: Command[] = [
-      { id: 'proj:all', label: '프로젝트: 전체', hint: '필터', run: () => setProjectId(undefined) },
+      { id: 'proj:all', label: t('palette.project.all'), hint: t('palette.hint.filter'), run: () => setProjectId(undefined) },
       {
         id: 'action:reindex',
-        label: '재인덱싱',
-        hint: '액션',
+        label: t('app.reindex'),
+        hint: t('palette.hint.action'),
         run: () => {
           void window.vault.reindex()
         },
       },
       {
         id: 'action:focus-search',
-        label: '검색창 포커스',
-        hint: '액션',
+        label: t('palette.focusSearch'),
+        hint: t('palette.hint.action'),
         run: () => {
           setTab('search')
           setTimeout(() => searchInputRef.current?.focus(), 0)
@@ -490,15 +508,15 @@ export default function App() {
     ]
     const projCmds: Command[] = projects.map((p) => ({
       id: `proj:${p.id}`,
-      label: `프로젝트: ${sidebarPrimaryLabel(p.displayName)}`,
-      hint: '필터',
+      label: t('palette.project', { label: sidebarPrimaryLabel(p.displayName) }),
+      hint: t('palette.hint.filter'),
       run: () => {
         setProjectId(p.id)
         setTab('search')
       },
     }))
     return [...tabCmds, ...actions, ...projCmds]
-  }, [projects])
+  }, [projects, t])
 
   useEffect(() => {
     const off = window.vault.onIndexUpdated(() => {
@@ -570,7 +588,7 @@ export default function App() {
   const doExport = async (format: 'md' | 'csv') => {
     const ids = [...selected]
     if (!ids.length) {
-      setStatus('보낼 메시지를 선택하세요.')
+      setStatus(t('toast.exportEmpty'))
       return
     }
     const text = await window.vault.exportMessages(ids, format, {
@@ -579,7 +597,7 @@ export default function App() {
     })
     setExportText(text)
     setTab('export')
-    setStatus('보내기 완료')
+    setStatus(t('toast.exported'))
   }
 
   const createTag = async () => {
@@ -598,7 +616,7 @@ export default function App() {
           <h1 className="truncate text-[13px] font-semibold tracking-tight text-white">
             Claude Vault
           </h1>
-          <span className="truncate text-[11px] text-zinc-500">로컬 대화 인덱스</span>
+          <span className="truncate text-[11px] text-zinc-500">{t('app.subtitle')}</span>
         </div>
         <div className="flex items-center gap-2">
           {update.state === 'ready' && (
@@ -606,29 +624,34 @@ export default function App() {
               type="button"
               onClick={() => void window.vault.updateInstall()}
               className="rounded-md bg-brand px-2 py-1 text-[11px] font-medium text-brand-fg transition-colors duration-150 hover:bg-brand-hover"
-              title={`${update.version ?? ''} 설치 후 재시작`}
+              title={t('app.update.restart', { version: update.version ?? '' })}
             >
-              업데이트 설치{update.version ? ` ${update.version}` : ''}
+              {t('app.update.install')}{update.version ? ` ${update.version}` : ''}
             </button>
           )}
           {update.state === 'downloading' && (
             <span className="font-mono text-[11px] text-zinc-500">
-              업데이트 {update.percent ?? 0}%
+              {t('app.update.downloading', { percent: update.percent ?? 0 })}
             </span>
           )}
+          <Segmented
+            value={locale}
+            onChange={setLocale}
+            options={LOCALES.map((l) => [l, LOCALE_LABEL[l]] as const)}
+          />
           <button
             type="button"
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            onClick={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
             className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
-            title="테마 전환"
+            title={t('app.theme.toggle')}
           >
-            {theme === 'dark' ? '라이트' : '다크'}
+            {theme === 'dark' ? t('app.theme.light') : t('app.theme.dark')}
           </button>
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
             className="rounded-md border border-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
-            title="명령 팔레트"
+            title={t('app.palette')}
           >
             ⌘K
           </button>
@@ -636,8 +659,8 @@ export default function App() {
             <span className="flex items-center gap-2 text-xs text-zinc-400">
               <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
               {indexProgress.phase === 'plans'
-                ? '플랜 인덱싱…'
-                : `인덱싱 ${indexProgress.current}/${indexProgress.total}`}
+                ? t('app.indexing.plans')
+                : t('app.indexing', { current: indexProgress.current, total: indexProgress.total })}
             </span>
           )}
           <button
@@ -646,7 +669,7 @@ export default function App() {
             onClick={async () => {
               const r = await window.vault.reindex()
               setStatus(
-                `재인덱싱 완료: 프로젝트 ${r.projects}, 세션 ${r.sessions}, 플랜 파일 ${r.planFiles}. 메타/역할 분류는 새 인덱스에 반영됩니다.`,
+                t('toast.reindexed', { projects: r.projects, sessions: r.sessions, plans: r.planFiles }),
               )
               await loadProjects()
               await loadRecentSessions()
@@ -654,7 +677,7 @@ export default function App() {
               await runSearch()
             }}
           >
-            재인덱싱
+            {t('app.reindex')}
           </button>
         </div>
       </header>
@@ -663,8 +686,8 @@ export default function App() {
         <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
           <nav className="space-y-3 p-2">
             {NAV_GROUPS.map((group) => (
-              <div key={group.label}>
-                <p className="mb-1 px-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{group.label}</p>
+              <div key={group.labelKey}>
+                <p className="mb-1 px-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{t(group.labelKey)}</p>
                 <div className="flex flex-col gap-0.5">
                   {group.items.map((item) => {
                     const active = tab === item.key
@@ -681,7 +704,7 @@ export default function App() {
                         }`}
                       >
                         <Icon name={item.icon} />
-                        {item.label}
+                        {t(item.labelKey)}
                       </button>
                     )
                   })}
@@ -693,7 +716,7 @@ export default function App() {
           <div className="flex min-h-0 flex-1 flex-col border-t border-zinc-800 p-2">
             <div className="mb-1 flex items-center gap-2 px-2">
               <Icon name="folder" className="text-zinc-500" />
-              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">프로젝트</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">{t('nav.projects')}</p>
               <span className="ml-auto font-mono text-[11px] tabular text-zinc-600">{projects.length}</span>
             </div>
             <div className="-mr-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
@@ -706,7 +729,7 @@ export default function App() {
                 }`}
                 onClick={() => setProjectId(undefined)}
               >
-                전체 프로젝트
+                {t('nav.projects.all')}
               </button>
               {projects.map((p) => {
                 const active = projectId === p.id
@@ -758,8 +781,8 @@ export default function App() {
                       ref={searchInputRef}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
-                      placeholder="키워드, 문장, 기억에 남는 단어…"
-                      aria-label="검색어"
+                      placeholder={t('search.placeholder')}
+                      aria-label={t('search.label')}
                       className="w-full rounded-md border border-zinc-800 bg-zinc-950 py-1.5 pl-8 pr-3 text-[13px] text-white outline-none transition duration-150 ease-out placeholder:text-zinc-600 focus:border-brand focus:bg-zinc-900 focus:ring-1 focus:ring-brand/40"
                     />
                   </div>
@@ -768,9 +791,9 @@ export default function App() {
                     onChange={setSearchScope}
                     options={
                       [
-                        ['messages', '대화'],
-                        ['plans', '플랜'],
-                        ['all', '전체'],
+                        ['messages', t('search.scope.messages')],
+                        ['plans', t('search.scope.plans')],
+                        ['all', t('search.scope.all')],
                       ] as const
                     }
                   />
@@ -784,20 +807,20 @@ export default function App() {
                         : 'border-zinc-800 text-zinc-500 hover:bg-zinc-950 hover:text-zinc-200'
                     }`}
                   >
-                    필터{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+                    {t('search.filters')}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
                   </button>
                 </div>
                 <p className="mt-1.5 font-mono text-[11px] text-zinc-600">
                   {query.trim()
-                    ? `${fuzzyHits.length}건${loading ? ' · 검색 중…' : ''}`
-                    : '검색어를 비우면 최근 세션과 플랜을 보여줍니다.'}
+                    ? `${t('search.resultCount', { count: fuzzyHits.length })}${loading ? t('search.searching') : ''}`
+                    : t('search.emptyHint')}
                 </p>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {loading && <p className="p-3 font-mono text-[11px] text-zinc-500">검색 중…</p>}
+                {loading && <p className="p-3 font-mono text-[11px] text-zinc-500">{t('search.loading')}</p>}
                 {!loading && query.trim() === '' && searchScope !== 'plans' && recentSessions.length > 0 && (
                   <section className="p-3">
-                    <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">최근 세션</h3>
+                    <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{t('search.recentSessions')}</h3>
                     <ul className="space-y-1">
                       {recentSessions.map((s) => (
                         <li key={s.sessionId}>
@@ -818,7 +841,7 @@ export default function App() {
                                 {sidebarPrimaryLabel(s.projectName)}
                               </span>
                               <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
-                                {new Date(s.mtime).toLocaleDateString()}
+                                {new Date(s.mtime).toLocaleDateString(BCP47[locale])}
                               </span>
                             </span>
                             {s.preview ? (
@@ -837,7 +860,7 @@ export default function App() {
                 )}
                 {!loading && query.trim() === '' && searchScope !== 'messages' && recentPlans.length > 0 && (
                   <section className="px-3 pb-3">
-                    <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">최근 플랜</h3>
+                    <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{t('search.recentPlans')}</h3>
                     <ul className="space-y-1">
                       {recentPlans.map((pl) => (
                         <li key={pl.id}>
@@ -857,7 +880,7 @@ export default function App() {
                                 {pl.title}
                               </span>
                               <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
-                                {new Date(pl.mtime).toLocaleDateString()}
+                                {new Date(pl.mtime).toLocaleDateString(BCP47[locale])}
                               </span>
                             </span>
                             <span className="mt-0.5 block truncate font-mono text-[11px] text-zinc-600">
@@ -871,9 +894,9 @@ export default function App() {
                 )}
                 {!loading && query.trim() !== '' && fuzzyHits.length === 0 && (
                   <div className="m-3 rounded-md border border-dashed border-zinc-700 px-5 py-10 text-center">
-                    <p className="text-sm font-medium text-white">일치하는 결과가 없습니다</p>
+                    <p className="text-sm font-medium text-white">{t('search.noResults')}</p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      정밀도를 「아무거나」로 낮추거나 기간 필터를 넓혀 보세요.
+                      {t('search.noResults.hint')}
                     </p>
                     {activeFilterCount > 0 && (
                       <button
@@ -881,7 +904,7 @@ export default function App() {
                         onClick={resetFilters}
                         className="mt-3 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
                       >
-                        필터 초기화
+                        {t('search.resetFilters')}
                       </button>
                     )}
                   </div>
@@ -920,10 +943,10 @@ export default function App() {
                           <span className="truncate">
                             {h.sessionFile}:{h.lineIndex}
                           </span>
-                          {h.tsMs ? <span className="tabular">{formatTs(h.tsMs)}</span> : null}
-                          {messageClassLabel(h.messageClass) ? (
+                          {h.tsMs ? <span className="tabular">{formatTs(h.tsMs, locale)}</span> : null}
+                          {messageClassKey(h.messageClass) ? (
                             <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
-                              {messageClassLabel(h.messageClass)}
+                              {t(messageClassKey(h.messageClass)!)}
                             </span>
                           ) : null}
                         </div>
@@ -943,14 +966,14 @@ export default function App() {
                               onChange={() => toggleSelect(h.messageId)}
                               className="accent-brand"
                             />
-                            선택
+                            {t('action.select')}
                           </label>
                           <button
                             type="button"
                             className={GHOST_BTN}
                             onClick={() => window.vault.copyText(h.body)}
                           >
-                            복사
+                            {t('action.copy')}
                           </button>
                           <button
                             type="button"
@@ -964,28 +987,28 @@ export default function App() {
                               })
                             }
                           >
-                            세션
+                            {t('action.session')}
                           </button>
                           <button
                             type="button"
                             className={GHOST_BTN}
                             onClick={async () => {
                               await window.vault.favoriteAdd(h.messageId)
-                              setStatus('즐겨찾기에 추가했습니다.')
+                              setStatus(t('toast.favorited'))
                             }}
                           >
-                            즐겨찾기
+                            {t('action.favorite')}
                           </button>
                           <button
                             type="button"
                             className={GHOST_BTN}
                             onClick={async () => {
-                              const name = h.body.slice(0, 40).replace(/\s+/g, ' ').trim() || '템플릿'
+                              const name = h.body.slice(0, 40).replace(/\s+/g, ' ').trim() || t('nav.templates')
                               await window.vault.templateCreate(name, h.body)
-                              setStatus('템플릿으로 저장했습니다. 템플릿 탭에서 편집하세요.')
+                              setStatus(t('toast.templated'))
                             }}
                           >
-                            템플릿
+                            {t('action.template')}
                           </button>
                         </div>
                       </div>
@@ -1003,9 +1026,9 @@ export default function App() {
 
           {tab === 'favorites' && (
             <div className="h-full overflow-y-auto p-4">
-              <h2 className="mb-3 text-sm font-semibold text-white">즐겨찾기</h2>
+              <h2 className="mb-3 text-sm font-semibold text-white">{t('nav.favorites')}</h2>
               <div className="space-y-3">
-                {favorites.length === 0 && <p className="text-sm text-zinc-500">비어 있습니다.</p>}
+                {favorites.length === 0 && <p className="text-sm text-zinc-500">{t('favorites.empty')}</p>}
                 {favorites.map((f) => (
                   <div
                     key={f.id}
@@ -1030,14 +1053,14 @@ export default function App() {
                           })
                         }
                       >
-                        세션 전체
+                        {t('transcript.title')}
                       </button>
                       <button
                         type="button"
                         className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
                         onClick={() => window.vault.copyText(f.body)}
                       >
-                        복사
+                        {t('action.copy')}
                       </button>
                       <button
                         type="button"
@@ -1047,7 +1070,7 @@ export default function App() {
                           await loadFavorites()
                         }}
                       >
-                        제거
+                        {t('action.remove')}
                       </button>
                     </div>
                   </div>
@@ -1062,18 +1085,18 @@ export default function App() {
 
           {tab === 'stats' && (
             <div className="h-full overflow-y-auto p-4 text-sm">
-              <h2 className="mb-3 text-sm font-semibold text-white">사용 통계</h2>
-              {!stats && <p className="text-zinc-500">불러오는 중…</p>}
+              <h2 className="mb-3 text-sm font-semibold text-white">{t('stats.title')}</h2>
+              {!stats && <p className="text-zinc-500">{t('stats.loading')}</p>}
               {stats && (
                 <div className="grid gap-6 md:grid-cols-2">
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium text-zinc-500">요약</h3>
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.summary')}</h3>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {(
                         [
-                          ['프로젝트', stats.totalProjects],
-                          ['세션', stats.totalSessions],
-                          ['메시지', stats.totalMessages],
+                          [t('stats.projects'), stats.totalProjects],
+                          [t('stats.sessions'), stats.totalSessions],
+                          [t('stats.messages'), stats.totalMessages],
                         ] as const
                       ).map(([label, value]) => (
                         <div
@@ -1089,14 +1112,14 @@ export default function App() {
                     </div>
                   </section>
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium text-zinc-500">역할별 메시지</h3>
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.byRole')}</h3>
                     <div className="space-y-1.5">
                       {(() => {
                         const max = Math.max(1, ...stats.messagesByRole.map((r) => r.count))
                         const label: Record<string, string> = {
-                          user: '나',
-                          assistant: 'Claude',
-                          tool: '도구',
+                          user: t('role.me'),
+                          assistant: t('role.assistant'),
+                          tool: t('role.tool'),
                         }
                         return stats.messagesByRole.map((r) => (
                           <div key={r.role} className="flex items-center gap-2 text-xs">
@@ -1118,19 +1141,19 @@ export default function App() {
                     </div>
                   </section>
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium text-zinc-500">토큰 사용량 (실측)</h3>
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.tokens')}</h3>
                     {stats.tokenTotals.input + stats.tokenTotals.output === 0 ? (
                       <p className="text-xs text-zinc-500">
-                        토큰 사용량 데이터가 없습니다. 재인덱싱하면 어시스턴트 응답의 usage에서 수집됩니다.
+                        {t('stats.tokens.empty')}
                       </p>
                     ) : (
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         {(
                           [
-                            ['입력', stats.tokenTotals.input, 'text-brand-text'],
-                            ['출력', stats.tokenTotals.output, 'text-sky-600'],
-                            ['캐시 읽기', stats.tokenTotals.cacheRead, 'text-plan-text'],
-                            ['캐시 생성', stats.tokenTotals.cacheCreation, 'text-amber-600'],
+                            [t('stats.tokens.input'), stats.tokenTotals.input, 'text-brand-text'],
+                            [t('stats.tokens.output'), stats.tokenTotals.output, 'text-sky-600'],
+                            [t('stats.tokens.cacheRead'), stats.tokenTotals.cacheRead, 'text-plan-text'],
+                            [t('stats.tokens.cacheCreation'), stats.tokenTotals.cacheCreation, 'text-amber-600'],
                           ] as const
                         ).map(([label, value, cls]) => (
                           <div
@@ -1140,7 +1163,7 @@ export default function App() {
                             <div className={`text-lg font-semibold ${cls}`}>
                               {formatCompact(value)}
                             </div>
-                            <div className="text-[11px] text-zinc-500">{label} 토큰</div>
+                            <div className="text-[11px] text-zinc-500">{label} {t('stats.tokens.suffix')}</div>
                           </div>
                         ))}
                       </div>
@@ -1148,7 +1171,7 @@ export default function App() {
                   </section>
                   {stats.tokensByModel.length > 0 && (
                     <section className="md:col-span-2">
-                      <h3 className="mb-2 text-xs font-medium text-zinc-500">모델별 사용</h3>
+                      <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.byModel')}</h3>
                       <div className="space-y-2">
                         {(() => {
                           const max = Math.max(
@@ -1162,7 +1185,7 @@ export default function App() {
                                 <div className="mb-0.5 flex justify-between text-xs text-zinc-300">
                                   <span className="font-mono">{m.model}</span>
                                   <span className="text-zinc-500">
-                                    {m.messages}턴 · {formatCompact(total)} 토큰
+                                    {t('stats.byModel.turns', { turns: m.messages, tokens: formatCompact(total) })}
                                   </span>
                                 </div>
                                 <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
@@ -1178,23 +1201,24 @@ export default function App() {
                       </div>
                     </section>
                   )}
+                  <CostPanel byModel={stats.tokensByModel} />
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium text-zinc-500">자주 등장한 단어</h3>
+                    <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.topWords')}</h3>
                     <div className="flex flex-wrap gap-2">
-                      {stats.topTokens.map((t) => (
+                      {stats.topTokens.map((tok) => (
                         <span
-                          key={t.token}
+                          key={tok.token}
                           className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300"
                         >
-                          {t.token}{' '}
-                          <span className="text-zinc-500">×{t.count}</span>
+                          {tok.token}{' '}
+                          <span className="text-zinc-500">×{tok.count}</span>
                         </span>
                       ))}
                     </div>
                   </section>
                   <section className="md:col-span-2">
                     <h3 className="mb-2 text-xs font-medium text-zinc-500">
-                      {stats.activityFromTimestamps ? '메시지 타임스탬프 기준 활동' : '세션 수정일 기준 활동'}
+                      {stats.activityFromTimestamps ? t('stats.activity.ts') : t('stats.activity.mtime')}
                     </h3>
                     {(() => {
                       const max = Math.max(1, ...stats.activityByDay.map((d) => d.count))
@@ -1230,7 +1254,7 @@ export default function App() {
                     checked={excludeMeta}
                     onChange={(e) => setExcludeMeta(e.target.checked)}
                   />
-                  보내기 시 메타 줄 제외
+                  {t('export.excludeMeta')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2">
                   <input
@@ -1238,7 +1262,7 @@ export default function App() {
                     checked={excludeSubagents}
                     onChange={(e) => setExcludeSubagents(e.target.checked)}
                   />
-                  서브에이전트 제외
+                  {t('export.excludeSubagents')}
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1247,28 +1271,28 @@ export default function App() {
                   className="rounded-md bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900"
                   onClick={() => doExport('md')}
                 >
-                  Markdown 보내기
+                  {t('export.markdown')}
                 </button>
                 <button
                   type="button"
                   className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200"
                   onClick={() => doExport('csv')}
                 >
-                  CSV 보내기
+                  {t('export.csv')}
                 </button>
                 <button
                   type="button"
                   className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200"
                   onClick={() => exportText && window.vault.copyText(exportText)}
                 >
-                  결과 복사
+                  {t('export.copyResult')}
                 </button>
               </div>
               <textarea
                 readOnly
                 className="min-h-0 flex-1 resize-none rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-200"
                 value={exportText}
-                placeholder="검색 탭에서 메시지를 선택한 뒤 Markdown/CSV를 누르면 여기에 표시됩니다."
+                placeholder={t('export.placeholder')}
               />
             </div>
           )}
@@ -1278,9 +1302,9 @@ export default function App() {
           <aside className="flex w-[276px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-900">
             <div className="flex h-11 items-center justify-between border-b border-zinc-800 px-3">
               <div>
-                <h2 className="text-[12px] font-semibold text-white">검색 설정</h2>
+                <h2 className="text-[12px] font-semibold text-white">{t('inspector.title')}</h2>
                 <p className="text-[11px] text-zinc-500">
-                  {activeFilterCount > 0 ? `${activeFilterCount}개 적용됨` : '기본값'}
+                  {activeFilterCount > 0 ? t('inspector.applied', { count: activeFilterCount }) : t('inspector.default')}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -1290,13 +1314,13 @@ export default function App() {
                     onClick={resetFilters}
                     className="rounded-lg px-2 py-1 text-[11px] text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
                   >
-                    초기화
+                    {t('inspector.reset')}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setInspectorOpen(false)}
-                  aria-label="검색 설정 닫기"
+                  aria-label={t('inspector.close')}
                   className="rounded-lg px-2 py-1 text-zinc-500 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
                 >
                   ›
@@ -1305,72 +1329,72 @@ export default function App() {
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
-              <Field label="정밀도">
+              <Field label={t('inspector.precision')}>
                 <Segmented
                   value={matchMode}
                   onChange={setMatchMode}
                   options={
                     [
-                      ['any', '아무거나'],
-                      ['all', '모두'],
-                      ['phrase', '구문'],
+                      ['any', t('inspector.precision.any')],
+                      ['all', t('inspector.precision.all')],
+                      ['phrase', t('inspector.precision.phrase')],
                     ] as const
                   }
                 />
                 <p className="text-[11px] leading-relaxed text-zinc-500">
                   {matchMode === 'any'
-                    ? '단어 중 하나라도 있으면 찾습니다.'
+                    ? t('inspector.precision.anyHelp')
                     : matchMode === 'all'
-                      ? '모든 단어를 포함한 결과만 찾습니다.'
-                      : '입력한 문장 그대로를 찾습니다.'}
+                      ? t('inspector.precision.allHelp')
+                      : t('inspector.precision.phraseHelp')}
                 </p>
               </Field>
 
-              <Field label="정렬">
+              <Field label={t('inspector.sort')}>
                 <Segmented
                   value={sortMode}
                   onChange={setSortMode}
                   options={
                     [
-                      ['relevance', '관련도'],
-                      ['newest', '최신'],
-                      ['oldest', '오래된'],
+                      ['relevance', t('inspector.sort.relevance')],
+                      ['newest', t('inspector.sort.newest')],
+                      ['oldest', t('inspector.sort.oldest')],
                     ] as const
                   }
                 />
               </Field>
 
-              <Field label="기간">
+              <Field label={t('inspector.range')}>
                 <Segmented
                   value={dateRange}
                   onChange={setDateRange}
                   options={
                     [
-                      ['all', '전체'],
-                      ['24h', '24시간'],
-                      ['7d', '7일'],
-                      ['30d', '30일'],
+                      ['all', t('inspector.range.all')],
+                      ['24h', t('inspector.range.24h')],
+                      ['7d', t('inspector.range.7d')],
+                      ['30d', t('inspector.range.30d')],
                     ] as const
                   }
                 />
               </Field>
 
-              <Field label="역할">
+              <Field label={t('inspector.role')}>
                 <Segmented
                   value={role}
                   onChange={setRole}
                   disabled={searchScope === 'plans'}
                   options={
                     [
-                      ['', '전체'],
-                      ['user', '나'],
-                      ['assistant', 'Claude'],
+                      ['', t('inspector.role.all')],
+                      ['user', t('role.me')],
+                      ['assistant', t('role.assistant')],
                     ] as const
                   }
                 />
               </Field>
 
-              <Field label="제외">
+              <Field label={t('inspector.exclude')}>
                 <div className="space-y-2">
                   <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
                     <input
@@ -1381,8 +1405,8 @@ export default function App() {
                       className="mt-0.5 accent-brand"
                     />
                     <span>
-                      메타 줄
-                      <span className="block text-[11px] text-zinc-500">권한·제목 등 시스템 기록</span>
+                      {t('inspector.exclude.meta')}
+                      <span className="block text-[11px] text-zinc-500">{t('inspector.exclude.metaHelp')}</span>
                     </span>
                   </label>
                   <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
@@ -1394,14 +1418,14 @@ export default function App() {
                       className="mt-0.5 accent-brand"
                     />
                     <span>
-                      서브에이전트
-                      <span className="block text-[11px] text-zinc-500">subagents 경로의 로그</span>
+                      {t('inspector.exclude.subagents')}
+                      <span className="block text-[11px] text-zinc-500">{t('inspector.exclude.subagentsHelp')}</span>
                     </span>
                   </label>
                 </div>
               </Field>
 
-              <Field label="태그">
+              <Field label={t('inspector.tags')}>
                 <div className="flex gap-1.5">
                   <input
                     value={newTag}
@@ -1409,7 +1433,7 @@ export default function App() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void createTag()
                     }}
-                    placeholder="새 태그 이름"
+                    placeholder={t('inspector.tags.placeholder')}
                     className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs text-white outline-none transition duration-150 ease-out placeholder:text-zinc-500 focus:border-brand focus:bg-zinc-900 focus:ring-2 focus:ring-brand/25"
                   />
                   <button
@@ -1418,17 +1442,17 @@ export default function App() {
                     disabled={!newTag.trim()}
                     className="shrink-0 rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    추가
+                    {t('inspector.tags.add')}
                   </button>
                 </div>
                 {tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {tags.map((t) => (
+                    {tags.map((tag) => (
                       <span
-                        key={t.id}
+                        key={tag.id}
                         className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-400"
                       >
-                        {t.name}
+                        {tag.name}
                       </span>
                     ))}
                   </div>
@@ -1459,11 +1483,11 @@ export default function App() {
             {status}
           </span>
         ) : (
-          <span className="text-zinc-600">idle</span>
+          <span className="text-zinc-600">{t('app.status.idle')}</span>
         )}
         <span className="ml-auto shrink-0 tabular">
-          {tab === 'search' && query.trim() ? `hits ${fuzzyHits.length} · ` : ''}
-          projects {projects.length} · tags {tags.length}
+          {tab === 'search' && query.trim() ? t('app.status.hits', { hits: fuzzyHits.length }) : ''}
+          {t('app.status.counts', { projects: projects.length, tags: tags.length })}
         </span>
       </footer>
 
@@ -1489,6 +1513,7 @@ function PlanSearchHitCard({
   active?: boolean
   onStatus: (s: string) => void
 }) {
+  const { locale, t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const [body, setBody] = useState<string | null>(null)
 
@@ -1507,7 +1532,7 @@ function PlanSearchHitCard({
   const copyFull = async () => {
     const b = await ensureBody()
     void window.vault.copyText(b)
-    onStatus('플랜 전체를 복사했습니다.')
+    onStatus(t('toast.planCopied'))
   }
 
   // Same row rhythm as a message hit; plan-ness is carried by one small tag.
@@ -1526,7 +1551,7 @@ function PlanSearchHitCard({
             {h.title}
           </span>
           <span className="truncate">{h.filePath}</span>
-          <span className="tabular">{new Date(h.mtime).toLocaleDateString()}</span>
+          <span className="tabular">{new Date(h.mtime).toLocaleDateString(BCP47[locale])}</span>
         </div>
         <div
           className={`flex shrink-0 items-center gap-1 transition-opacity duration-100 ${
@@ -1537,7 +1562,7 @@ function PlanSearchHitCard({
             복사
           </button>
           <button type="button" className={GHOST_BTN} onClick={() => void toggle()}>
-            {expanded ? '접기' : '본문'}
+            {expanded ? t('action.collapse') : t('action.body')}
           </button>
         </div>
       </div>
@@ -1558,6 +1583,7 @@ function PlanMarkdownModal({
   open: PlanPreviewOpen
   onClose: () => void
 }) {
+  const t = useT()
   const [body, setBody] = useState('')
   const [err, setErr] = useState('')
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -1583,13 +1609,13 @@ function PlanMarkdownModal({
         if (!cancelled) setBody(t)
       },
       () => {
-        if (!cancelled) setErr('플랜 본문을 불러오지 못했습니다.')
+        if (!cancelled) setErr(t('plan.loadError'))
       },
     )
     return () => {
       cancelled = true
     }
-  }, [open.planId])
+  }, [open.planId, t])
 
   return (
     <div
@@ -1617,7 +1643,7 @@ function PlanMarkdownModal({
               className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
               onClick={() => void window.vault.copyText(body)}
             >
-              전체 복사
+              {t('action.copyAll')}
             </button>
             <button
               ref={closeBtnRef}
@@ -1625,7 +1651,7 @@ function PlanMarkdownModal({
               className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover"
               onClick={onClose}
             >
-              닫기
+              {t('action.close')}
             </button>
           </div>
         </div>
@@ -1646,6 +1672,7 @@ function SessionTranscriptModal({
   open: TranscriptOpen
   onClose: () => void
 }) {
+  const t = useT()
   const [rows, setRows] = useState<SessionMessageRow[]>([])
   const [loadErr, setLoadErr] = useState('')
   const [showMeta, setShowMeta] = useState(false)
@@ -1709,13 +1736,13 @@ function SessionTranscriptModal({
         if (!cancelled) setRows(r)
       },
       () => {
-        if (!cancelled) setLoadErr('세션을 불러오지 못했습니다.')
+        if (!cancelled) setLoadErr(t('transcript.loadError'))
       },
     )
     return () => {
       cancelled = true
     }
-  }, [open.sessionId])
+  }, [open.sessionId, t])
 
   useEffect(() => {
     if (!visibleRows.length || open.highlightLine < 0) return
@@ -1748,7 +1775,7 @@ function SessionTranscriptModal({
         <div className="flex shrink-0 flex-col gap-2 border-b border-zinc-800 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h2 id="transcript-title" className="text-sm font-semibold text-white">
-              세션 전체
+              {t('transcript.title')}
             </h2>
             <p
               className="mt-1 break-all font-mono text-xs leading-snug text-zinc-200"
@@ -1760,12 +1787,12 @@ function SessionTranscriptModal({
               {open.projectLabel}
             </p>
             <p className="mt-1 text-xs text-zinc-500">
-              한 JSONL 세션의 인덱스 순서 (최대 25,000줄) · Esc 로 닫기
+              {t('transcript.hint')}
             </p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
                 <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} />
-                메타 줄 표시 (권한·제목 등)
+                {t('transcript.showMeta')}
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
                 <input
@@ -1773,7 +1800,7 @@ function SessionTranscriptModal({
                   checked={showMarkdown}
                   onChange={(e) => setShowMarkdown(e.target.checked)}
                 />
-                마크다운 렌더링
+                {t('transcript.markdown')}
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
                 <input
@@ -1781,7 +1808,7 @@ function SessionTranscriptModal({
                   checked={showToolResults}
                   onChange={(e) => setShowToolResults(e.target.checked)}
                 />
-                도구 호출·결과 표시{toolRowCount > 0 ? ` (${toolRowCount})` : ''}
+                {t('transcript.showTools')}{toolRowCount > 0 ? ` (${toolRowCount})` : ''}
               </label>
             </div>
           </div>
@@ -1791,7 +1818,7 @@ function SessionTranscriptModal({
               className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
               onClick={() => copyAll()}
             >
-              전체 복사
+              {t('action.copyAll')}
             </button>
             <button
               ref={closeBtnRef}
@@ -1799,7 +1826,7 @@ function SessionTranscriptModal({
               className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover"
               onClick={onClose}
             >
-              닫기
+              {t('action.close')}
             </button>
           </div>
         </div>
@@ -1811,22 +1838,26 @@ function SessionTranscriptModal({
             const hiddenTools = showToolResults ? 0 : toolRowCount
             if (!hiddenMeta && !hiddenTools) return null
             const bits = [
-              hiddenMeta ? `메타 ${hiddenMeta}개` : '',
-              hiddenTools ? `도구 ${hiddenTools}개` : '',
+              hiddenMeta ? t('transcript.hidden.meta', { count: hiddenMeta }) : '',
+              hiddenTools ? t('transcript.hidden.tools', { count: hiddenTools }) : '',
             ].filter(Boolean)
-            return <p className="mb-2 text-[11px] text-zinc-500">{bits.join(' · ')} 숨김</p>
+            return (
+              <p className="mb-2 text-[11px] text-zinc-500">
+                {t('transcript.hidden', { parts: bits.join(' · ') })}
+              </p>
+            )
           })()}
           {shownRows.map((m) => {
             const isHi = m.lineIndex === open.highlightLine
             const align = chatAlignForDialog(m.role, m.messageClass)
             const isUser = m.role === 'user'
-            const mc = messageClassLabel(m.messageClass)
+            const mcKey = messageClassKey(m.messageClass)
             return (
               <div key={m.messageId} className={`mb-2 flex w-full min-w-0 ${chatRowFlex(align)}`}>
                 <div
                   ref={isHi ? highlightRef : undefined}
                   className={`${chatBubbleShellClass(align, isHi)} ${m.messageClass === 'meta' ? 'opacity-90' : ''}`}
-                  aria-label={`${m.role} · 줄 ${m.lineIndex}`}
+                  aria-label={`${m.role} · ${m.lineIndex}`}
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                     {align !== 'center' ? (
@@ -1840,8 +1871,8 @@ function SessionTranscriptModal({
                     ) : null}
                     <span className="font-mono text-zinc-400">#{m.lineIndex}</span>
                     <span className={isUser ? 'text-emerald-400' : 'text-zinc-400'}>{m.role}</span>
-                    {mc ? (
-                      <span className="rounded bg-zinc-800 px-1 text-[10px] text-amber-200/80">{mc}</span>
+                    {mcKey ? (
+                      <span className="rounded bg-zinc-800 px-1 text-[10px] text-amber-200/80">{t(mcKey)}</span>
                     ) : null}
                     <button
                       type="button"
@@ -1861,8 +1892,10 @@ function SessionTranscriptModal({
           })}
           {shownRows.length < visibleRows.length && (
             <div ref={sentinelRef} className="py-4 text-center font-mono text-[11px] text-zinc-600">
-              {shownRows.length.toLocaleString()} / {visibleRows.length.toLocaleString()} 행 —
-              스크롤하면 더 불러옵니다
+              {t('transcript.more', {
+                shown: shownRows.length.toLocaleString(),
+                total: visibleRows.length.toLocaleString(),
+              })}
             </div>
           )}
         </div>
@@ -1880,6 +1913,7 @@ function TagEditor({
   tags: TagRow[]
   onChange: () => void
 }) {
+  const t = useT()
   const [selected, setSelected] = useState<number[]>([])
 
   useEffect(() => {
@@ -1900,23 +1934,23 @@ function TagEditor({
   }
 
   if (!tags.length) {
-    return <p className="mt-1 text-[11px] text-zinc-600">태그 없음 — 우측 패널에서 추가</p>
+    return <p className="mt-1 text-[11px] text-zinc-600">{t('inspector.tags.empty')}</p>
   }
 
   return (
     <div className="mt-1.5 flex flex-wrap gap-1">
-      {tags.map((t) => (
+      {tags.map((tag) => (
         <button
-          key={t.id}
+          key={tag.id}
           type="button"
-          onClick={() => void toggle(t.id)}
+          onClick={() => void toggle(tag.id)}
           className={`rounded-[3px] border px-1.5 py-px text-[10px] transition-colors duration-100 ${
-            selected.includes(t.id)
+            selected.includes(tag.id)
               ? 'border-brand-line bg-brand-soft font-medium text-brand-text'
               : 'border-zinc-800 text-zinc-600 hover:border-brand-line hover:text-zinc-300'
           }`}
         >
-          {t.name}
+          {tag.name}
         </button>
       ))}
     </div>
@@ -1924,6 +1958,7 @@ function TagEditor({
 }
 
 function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+  const t = useT()
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -1981,12 +2016,12 @@ function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: (
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={onKey}
-          placeholder="명령·프로젝트·탭 검색…  (Esc 닫기)"
+          placeholder={t('palette.placeholder')}
           className="w-full border-b border-zinc-800 bg-transparent px-4 py-3 text-sm text-white outline-none"
         />
         <ul className="max-h-80 overflow-y-auto py-1">
           {filtered.length === 0 && (
-            <li className="px-4 py-3 text-xs text-zinc-500">일치하는 명령이 없습니다.</li>
+            <li className="px-4 py-3 text-xs text-zinc-500">{t('palette.empty')}</li>
           )}
           {filtered.map((c, i) => (
             <li key={c.id}>
@@ -2018,6 +2053,7 @@ function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: (
  * which session, and on what branch" directly.
  */
 function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => void }) {
+  const { locale, t } = useI18n()
   const [query, setQuery] = useState('')
   const [files, setFiles] = useState<FileRow[]>([])
   const [selected, setSelected] = useState<FileRow | null>(null)
@@ -2066,19 +2102,19 @@ function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => voi
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="파일명 또는 경로…"
-              aria-label="파일 검색"
+              placeholder={t('files.placeholder')}
+              aria-label={t('files.search')}
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 py-1.5 pl-8 pr-3 text-[13px] text-white outline-none transition duration-150 placeholder:text-zinc-600 focus:border-brand focus:bg-zinc-900 focus:ring-1 focus:ring-brand/40"
             />
           </div>
           <p className="mt-1.5 font-mono text-[11px] text-zinc-600">
-            {loading ? '…' : `${files.length}개 파일`}
+            {loading ? '…' : t('files.count', { count: files.length })}
           </p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {!loading && files.length === 0 && (
             <p className="p-3 text-[12px] text-zinc-500">
-              기록된 파일이 없습니다. 재인덱싱하면 도구 호출에서 수집합니다.
+              {t('files.empty')}
             </p>
           )}
           {files.map((f) => {
@@ -2099,13 +2135,13 @@ function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => voi
                     {f.basename}
                   </span>
                   <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
-                    {f.touches}회 · {f.sessions}세션
+                    {t('files.touches', { touches: f.touches, sessions: f.sessions })}
                   </span>
                 </div>
                 <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-600">{f.path}</div>
                 {f.lastTouched ? (
                   <div className="mt-0.5 font-mono text-[11px] tabular text-zinc-600">
-                    {formatTs(f.lastTouched)}
+                    {formatTs(f.lastTouched, locale)}
                   </div>
                 ) : null}
               </button>
@@ -2118,9 +2154,9 @@ function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => voi
         {!selected ? (
           <div className="flex h-full items-center justify-center p-8 text-center">
             <div>
-              <p className="text-[13px] text-zinc-400">파일을 선택하면 작업 이력이 표시됩니다</p>
+              <p className="text-[13px] text-zinc-400">{t('files.selectPrompt')}</p>
               <p className="mt-1 text-[12px] text-zinc-600">
-                언제·어느 세션·어느 브랜치에서 그 파일을 다뤘는지 보여줍니다.
+                {t('files.selectHint')}
               </p>
             </div>
           </div>
@@ -2130,42 +2166,42 @@ function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => voi
               <h2 className="truncate text-[13px] font-semibold text-white">{selected.basename}</h2>
               <p className="truncate font-mono text-[11px] text-zinc-600">{selected.path}</p>
             </div>
-            {timeline.map((t) => (
-              <article key={t.messageId} className="border-b border-zinc-800 px-3 py-2.5">
+            {timeline.map((row) => (
+              <article key={row.messageId} className="border-b border-zinc-800 px-3 py-2.5">
                 <div className="mb-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-600">
                   <span
                     className={`rounded-[3px] px-1 py-px text-[10px] font-medium uppercase ${
-                      t.role === 'user' ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-500'
+                      row.role === 'user' ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-500'
                     }`}
                   >
-                    {t.role === 'user' ? 'me' : t.role === 'assistant' ? 'ai' : t.role}
+                    {row.role === 'user' ? 'me' : row.role === 'assistant' ? 'ai' : row.role}
                   </span>
                   <span className="truncate font-sans font-medium text-zinc-300">
-                    {sidebarPrimaryLabel(t.projectName)}
+                    {sidebarPrimaryLabel(row.projectName)}
                   </span>
-                  {t.gitBranch ? (
+                  {row.gitBranch ? (
                     <span className="rounded-[3px] border border-zinc-800 px-1 text-[10px]">
-                      {t.gitBranch}
+                      {row.gitBranch}
                     </span>
                   ) : null}
-                  {t.tsMs ? <span className="tabular">{formatTs(t.tsMs)}</span> : null}
+                  {row.tsMs ? <span className="tabular">{formatTs(row.tsMs, locale)}</span> : null}
                   <button
                     type="button"
                     className="ml-auto text-brand-text hover:underline"
                     onClick={() =>
                       onOpenSession({
-                        sessionId: t.sessionId,
-                        sessionFile: t.sessionFile,
-                        projectLabel: t.projectName,
-                        highlightLine: t.lineIndex,
+                        sessionId: row.sessionId,
+                        sessionFile: row.sessionFile,
+                        projectLabel: row.projectName,
+                        highlightLine: row.lineIndex,
                       })
                     }
                   >
-                    세션 열기
+                    {t('action.openSession')}
                   </button>
                 </div>
                 <p className="line-clamp-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-400 [overflow-wrap:anywhere]">
-                  {t.preview}
+                  {row.preview}
                 </p>
               </article>
             ))}
@@ -2177,6 +2213,7 @@ function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => voi
 }
 
 function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
+  const t = useT()
   const [templates, setTemplates] = useState<TemplateRow[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [name, setName] = useState('')
@@ -2214,13 +2251,13 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
     if (!body.trim() && !name.trim()) return
     if (selectedId == null) {
       const id = await window.vault.templateCreate(name, body)
-      onStatus('템플릿을 만들었습니다.')
+      onStatus(t('toast.templateCreated'))
       const list = await load()
       const created = list.find((t) => t.id === id)
       if (created) openTemplate(created)
     } else {
       await window.vault.templateUpdate(selectedId, name, body)
-      onStatus('템플릿을 저장했습니다.')
+      onStatus(t('toast.templateSaved'))
       await load()
     }
   }
@@ -2228,14 +2265,14 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
   const remove = async () => {
     if (selectedId == null) return
     await window.vault.templateDelete(selectedId)
-    onStatus('템플릿을 삭제했습니다.')
+    onStatus(t('toast.templateDeleted'))
     startNew()
     await load()
   }
 
   const copyRendered = () => {
     void window.vault.copyText(rendered)
-    onStatus('채워진 프롬프트를 복사했습니다.')
+    onStatus(t('toast.promptCopied'))
   }
 
   return (
@@ -2246,25 +2283,27 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
           onClick={startNew}
           className="mb-3 w-full rounded-md bg-emerald-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
         >
-          + 새 템플릿
+          {t('templates.new')}
         </button>
         {templates.length === 0 && (
           <p className="text-xs text-zinc-500">
-            아직 템플릿이 없습니다. 검색 결과의 「템플릿 저장」이나 위 버튼으로 만들 수 있습니다.
+            {t('templates.empty')}
           </p>
         )}
         <ul className="space-y-1">
-          {templates.map((t) => (
-            <li key={t.id}>
+          {templates.map((tpl) => (
+            <li key={tpl.id}>
               <button
                 type="button"
-                onClick={() => openTemplate(t)}
+                onClick={() => openTemplate(tpl)}
                 className={`w-full truncate rounded px-2 py-1.5 text-left text-xs ${
-                  selectedId === t.id ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-900'
+                  selectedId === tpl.id
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-300 hover:bg-zinc-900'
                 }`}
-                title={t.name}
+                title={tpl.name}
               >
-                {t.name || '무제 템플릿'}
+                {tpl.name || t('templates.untitled')}
               </button>
             </li>
           ))}
@@ -2275,7 +2314,7 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="템플릿 이름"
+            placeholder={t('templates.name')}
             className="min-w-[200px] flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white"
           />
           <button
@@ -2283,7 +2322,7 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
             onClick={() => void save()}
             className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
           >
-            저장
+            {t('templates.save')}
           </button>
           {selectedId != null && (
             <button
@@ -2291,22 +2330,22 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
               onClick={() => void remove()}
               className="rounded-md border border-red-800/70 px-3 py-2 text-sm text-red-200 hover:bg-red-950/40"
             >
-              삭제
+              {t('templates.delete')}
             </button>
           )}
         </div>
         <label className="mb-1 block text-xs text-zinc-500">
-          본문 — <code className="text-plan-text">{'{{변수}}'}</code> 형태로 채울 자리를 표시하세요.
+          {t('templates.bodyLabel', { token: '{{…}}' })}
         </label>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder={'예) {{언어}}로 작성된 {{파일}}을 리뷰하고 개선점을 제안해줘.'}
+          placeholder={t('templates.bodyPlaceholder')}
           className="h-48 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-xs text-zinc-100"
         />
         {variables.length > 0 && (
           <section className="mt-4">
-            <h3 className="mb-2 text-xs font-medium text-zinc-500">변수 채우기</h3>
+            <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('templates.variables')}</h3>
             <div className="grid gap-2 sm:grid-cols-2">
               {variables.map((v) => (
                 <label key={v} className="flex flex-col gap-1 text-xs text-zinc-400">
@@ -2323,20 +2362,235 @@ function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
         )}
         <section className="mt-4">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">미리보기</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">{t('templates.preview')}</h3>
             <button
               type="button"
               onClick={copyRendered}
               className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
             >
-              채워서 복사
+              {t('templates.copyFilled')}
             </button>
           </div>
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200">
-            {rendered || '본문을 입력하면 여기에 미리보기가 표시됩니다.'}
+            {rendered || t('templates.previewEmpty')}
           </pre>
         </section>
       </div>
     </div>
+  )
+}
+
+/**
+ * Estimated spend from the token counts already in the index.
+ *
+ * Two deliberate choices: models with no price row are *excluded* from the total
+ * and called out separately (a silent 0 would read as "this was free"), and the
+ * price table is editable inline because published rates move and a baked-in
+ * number would quietly drift wrong.
+ */
+function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
+  const t = useT()
+  const [prices, setPrices] = useState<ModelPrice[] | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<ModelPrice[]>([])
+  const [newModel, setNewModel] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    window.vault
+      .pricesList()
+      .then((p) => {
+        if (alive) setPrices(p)
+      })
+      .catch(() => {
+        if (alive) setPrices([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const rows = useMemo(() => {
+    if (!prices) return []
+    return byModel
+      // Claude Code records placeholder ids like `<synthetic>` with no usage at
+      // all. Costing them contributes nothing but would inflate the
+      // "unpriced models" warning, so drop anything with zero tokens.
+      .filter((m) => m.input + m.output + m.cacheRead + m.cacheCreation > 0)
+      .map((m) => ({
+        model: m.model,
+        cost: costOf(
+          m.model,
+          {
+            input: m.input,
+            output: m.output,
+            cacheRead: m.cacheRead,
+            cacheCreation: m.cacheCreation,
+          },
+          prices,
+        ),
+      }))
+      .sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
+  }, [byModel, prices])
+
+  const priced = rows.filter((r) => r.cost != null)
+  const unpriced = rows.length - priced.length
+  const total = priced.reduce((sum, r) => sum + (r.cost ?? 0), 0)
+  const max = Math.max(1e-9, ...priced.map((r) => r.cost ?? 0))
+
+  if (!prices || byModel.length === 0) return null
+
+  const startEdit = () => {
+    setDraft(prices.map((p) => ({ ...p })))
+    setEditing(true)
+  }
+
+  const commit = async () => {
+    setPrices(await window.vault.pricesSave(draft))
+    setEditing(false)
+  }
+
+  const patch = (i: number, field: keyof ModelPrice, value: string) => {
+    setDraft((d) =>
+      d.map((p, idx) =>
+        idx === i ? { ...p, [field]: field === 'model' ? value : Number(value) } : p,
+      ),
+    )
+  }
+
+  return (
+    <section className="md:col-span-2">
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="text-xs font-medium text-zinc-500">{t('cost.title')}</h3>
+        <button
+          type="button"
+          className={`${GHOST_BTN} ml-auto`}
+          onClick={() => (editing ? void commit() : startEdit())}
+        >
+          {editing ? t('cost.donePrices') : t('cost.editPrices')}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[11px] text-zinc-500">{t('cost.total')}</span>
+          <span className="tabular text-lg font-semibold text-white">{formatUsd(total)}</span>
+          {unpriced > 0 && (
+            <span
+              className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700"
+              title={t('cost.unpriced.hint')}
+            >
+              {unpriced === 1 ? t('cost.unpriced.one') : t('cost.unpriced', { count: unpriced })}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {priced.map((r) => (
+            <div key={r.model}>
+              <div className="mb-0.5 flex justify-between text-xs text-zinc-300">
+                <span className="font-mono">{r.model}</span>
+                <span className="tabular text-zinc-500">{formatUsd(r.cost ?? 0)}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-brand"
+                  style={{ width: `${((r.cost ?? 0) / max) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">{t('cost.disclaimer')}</p>
+      </div>
+
+      {editing && (
+        <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+          <h4 className="text-[11px] font-medium text-zinc-400">{t('cost.prices.title')}</h4>
+          <p className="mt-0.5 text-[11px] text-zinc-600">
+            {t('cost.prices.note', { date: PRICES_AS_OF })}
+          </p>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-[11px]">
+              <thead>
+                <tr className="text-left text-zinc-600">
+                  <th className="py-1 pr-2 font-medium">{t('cost.prices.model')}</th>
+                  <th className="py-1 pr-2 font-medium">{t('cost.prices.input')}</th>
+                  <th className="py-1 pr-2 font-medium">{t('cost.prices.output')}</th>
+                  <th className="py-1 pr-2 font-medium">{t('cost.prices.cacheRead')}</th>
+                  <th className="py-1 font-medium">{t('cost.prices.cacheWrite')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.map((p, i) => (
+                  <tr key={p.model} className="border-t border-zinc-800">
+                    <td className="py-1 pr-2 font-mono text-zinc-300">{p.model}</td>
+                    {(
+                      [
+                        'inputPerMTok',
+                        'outputPerMTok',
+                        'cacheReadPerMTok',
+                        'cacheWritePerMTok',
+                      ] as const
+                    ).map((field) => (
+                      <td key={field} className="py-1 pr-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={p[field]}
+                          onChange={(e) => patch(i, field, e.target.value)}
+                          className="tabular w-20 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={newModel}
+              onChange={(e) => setNewModel(e.target.value)}
+              placeholder={t('cost.prices.addPlaceholder')}
+              className="w-56 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            />
+            <button
+              type="button"
+              className={GHOST_BTN}
+              disabled={!newModel.trim() || draft.some((p) => p.model === newModel.trim())}
+              onClick={() => {
+                setDraft((d) => [
+                  ...d,
+                  {
+                    model: newModel.trim(),
+                    inputPerMTok: 0,
+                    outputPerMTok: 0,
+                    cacheReadPerMTok: 0,
+                    cacheWritePerMTok: 0,
+                  },
+                ])
+                setNewModel('')
+              }}
+            >
+              {t('cost.prices.add')}
+            </button>
+            <button
+              type="button"
+              className={`${GHOST_BTN} ml-auto`}
+              onClick={async () => {
+                const restored = await window.vault.pricesReset()
+                setPrices(restored)
+                setDraft(restored.map((p) => ({ ...p })))
+              }}
+            >
+              {t('cost.prices.reset')}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
