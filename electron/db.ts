@@ -159,6 +159,19 @@ function migrate(db: DbHandle) {
       updated_at INTEGER NOT NULL
     );
 
+    -- User-editable price list, in USD per million tokens. Deliberately NOT tied
+    -- to SCHEMA_VERSION: it holds no parsed data, so adding it needs no reindex.
+    -- Seeded from dated defaults but always user-overridable — published prices
+    -- change, and a stale hardcoded number is worse than an editable one.
+    CREATE TABLE IF NOT EXISTS model_prices (
+      model TEXT PRIMARY KEY,
+      input_per_mtok REAL NOT NULL,
+      output_per_mtok REAL NOT NULL,
+      cache_read_per_mtok REAL NOT NULL,
+      cache_write_per_mtok REAL NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_file_refs_path ON file_refs(path);
     CREATE INDEX IF NOT EXISTS idx_file_refs_basename ON file_refs(basename);
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
