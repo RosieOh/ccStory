@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
 import type {
   FavoriteRow,
+  FileRow,
+  FileTouchRow,
   IndexProgress,
+  UpdateStatus,
   MatchMode,
   MessageClass,
   PlanHit,
@@ -27,7 +30,7 @@ import {
 import { Markdown } from './Markdown'
 import { extractTemplateVariables, renderTemplate } from '../shared/templates'
 
-type Tab = 'search' | 'favorites' | 'templates' | 'stats' | 'export'
+type Tab = 'search' | 'files' | 'favorites' | 'templates' | 'stats' | 'export'
 
 type TranscriptOpen = {
   sessionId: number
@@ -62,6 +65,7 @@ function Icon({ name, className = '' }: { name: TabIcon; className?: string }) {
     chart: 'M4 20V10m5 10V4m5 16v-7m5 7V8',
     export: 'M12 15V3m0 0L8 7m4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
     folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z',
+    file: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Zm0 0v5h5',
   }
   return (
     <svg
@@ -79,7 +83,7 @@ function Icon({ name, className = '' }: { name: TabIcon; className?: string }) {
   )
 }
 
-type TabIcon = 'search' | 'star' | 'template' | 'chart' | 'export' | 'folder'
+type TabIcon = 'search' | 'star' | 'template' | 'chart' | 'export' | 'folder' | 'file'
 
 /** Segmented control: canvas track, raised surface thumb for the active option. */
 function Segmented<T extends string>({
@@ -133,6 +137,7 @@ const NAV_GROUPS: { label: string; items: { key: Tab; label: string; icon: TabIc
     label: '탐색',
     items: [
       { key: 'search', label: '검색', icon: 'search' },
+      { key: 'files', label: '파일', icon: 'file' },
       { key: 'favorites', label: '즐겨찾기', icon: 'star' },
       { key: 'templates', label: '템플릿', icon: 'template' },
     ],
@@ -260,6 +265,7 @@ export default function App() {
   const [recentSessions, setRecentSessions] = useState<RecentSessionRow[]>([])
   const [recentPlans, setRecentPlans] = useState<PlanListRow[]>([])
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
+  const [update, setUpdate] = useState<UpdateStatus>({ state: 'idle' })
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -379,6 +385,11 @@ export default function App() {
   }, [loadProjects])
 
   useEffect(() => {
+    void window.vault.updateStatus().then(setUpdate)
+    return window.vault.onUpdateStatus(setUpdate)
+  }, [])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
@@ -450,6 +461,7 @@ export default function App() {
     const tabCmds: Command[] = (
       [
         ['search', '검색'],
+        ['files', '파일'],
         ['favorites', '즐겨찾기'],
         ['templates', '템플릿'],
         ['stats', '통계'],
@@ -589,6 +601,21 @@ export default function App() {
           <span className="truncate text-[11px] text-zinc-500">로컬 대화 인덱스</span>
         </div>
         <div className="flex items-center gap-2">
+          {update.state === 'ready' && (
+            <button
+              type="button"
+              onClick={() => void window.vault.updateInstall()}
+              className="rounded-md bg-brand px-2 py-1 text-[11px] font-medium text-brand-fg transition-colors duration-150 hover:bg-brand-hover"
+              title={`${update.version ?? ''} 설치 후 재시작`}
+            >
+              업데이트 설치{update.version ? ` ${update.version}` : ''}
+            </button>
+          )}
+          {update.state === 'downloading' && (
+            <span className="font-mono text-[11px] text-zinc-500">
+              업데이트 {update.percent ?? 0}%
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
@@ -1028,6 +1055,8 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {tab === 'files' && <FilesTab onOpenSession={setTranscriptOpen} />}
 
           {tab === 'templates' && <TemplatesTab onStatus={setStatus} />}
 
@@ -1978,6 +2007,170 @@ function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: (
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * File reverse-index. A file is normally buried inside a tool payload, so full-text
+ * search rarely surfaces it — this answers "when did I last touch this file, in
+ * which session, and on what branch" directly.
+ */
+function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen) => void }) {
+  const [query, setQuery] = useState('')
+  const [files, setFiles] = useState<FileRow[]>([])
+  const [selected, setSelected] = useState<FileRow | null>(null)
+  const [timeline, setTimeline] = useState<FileTouchRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    const t = setTimeout(() => {
+      void window.vault.filesList(query).then((rows) => {
+        if (cancelled) return
+        setFiles(rows)
+        setLoading(false)
+      })
+    }, 180)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [query])
+
+  useEffect(() => {
+    if (!selected) {
+      setTimeline([])
+      return
+    }
+    let cancelled = false
+    void window.vault.fileTimeline(selected.path).then((rows) => {
+      if (!cancelled) setTimeline(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selected])
+
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="flex w-[380px] shrink-0 flex-col border-r border-zinc-800">
+        <div className="border-b border-zinc-800 bg-zinc-900 px-3 py-2">
+          <div className="relative">
+            <Icon
+              name="search"
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="파일명 또는 경로…"
+              aria-label="파일 검색"
+              className="w-full rounded-md border border-zinc-800 bg-zinc-950 py-1.5 pl-8 pr-3 text-[13px] text-white outline-none transition duration-150 placeholder:text-zinc-600 focus:border-brand focus:bg-zinc-900 focus:ring-1 focus:ring-brand/40"
+            />
+          </div>
+          <p className="mt-1.5 font-mono text-[11px] text-zinc-600">
+            {loading ? '…' : `${files.length}개 파일`}
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {!loading && files.length === 0 && (
+            <p className="p-3 text-[12px] text-zinc-500">
+              기록된 파일이 없습니다. 재인덱싱하면 도구 호출에서 수집합니다.
+            </p>
+          )}
+          {files.map((f) => {
+            const active = selected?.path === f.path
+            return (
+              <button
+                key={f.path}
+                type="button"
+                onClick={() => setSelected(f)}
+                className={`block w-full border-b border-zinc-800 px-3 py-2 text-left transition-colors duration-100 ${
+                  active ? 'bg-brand-soft' : 'hover:bg-zinc-900'
+                }`}
+              >
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className={`min-w-0 truncate text-[13px] ${active ? 'font-medium text-brand-text' : 'text-white'}`}
+                  >
+                    {f.basename}
+                  </span>
+                  <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
+                    {f.touches}회 · {f.sessions}세션
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-600">{f.path}</div>
+                {f.lastTouched ? (
+                  <div className="mt-0.5 font-mono text-[11px] tabular text-zinc-600">
+                    {formatTs(f.lastTouched)}
+                  </div>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        {!selected ? (
+          <div className="flex h-full items-center justify-center p-8 text-center">
+            <div>
+              <p className="text-[13px] text-zinc-400">파일을 선택하면 작업 이력이 표시됩니다</p>
+              <p className="mt-1 text-[12px] text-zinc-600">
+                언제·어느 세션·어느 브랜치에서 그 파일을 다뤘는지 보여줍니다.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="border-b border-zinc-800 bg-zinc-900 px-3 py-2">
+              <h2 className="truncate text-[13px] font-semibold text-white">{selected.basename}</h2>
+              <p className="truncate font-mono text-[11px] text-zinc-600">{selected.path}</p>
+            </div>
+            {timeline.map((t) => (
+              <article key={t.messageId} className="border-b border-zinc-800 px-3 py-2.5">
+                <div className="mb-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-600">
+                  <span
+                    className={`rounded-[3px] px-1 py-px text-[10px] font-medium uppercase ${
+                      t.role === 'user' ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-500'
+                    }`}
+                  >
+                    {t.role === 'user' ? 'me' : t.role === 'assistant' ? 'ai' : t.role}
+                  </span>
+                  <span className="truncate font-sans font-medium text-zinc-300">
+                    {sidebarPrimaryLabel(t.projectName)}
+                  </span>
+                  {t.gitBranch ? (
+                    <span className="rounded-[3px] border border-zinc-800 px-1 text-[10px]">
+                      {t.gitBranch}
+                    </span>
+                  ) : null}
+                  {t.tsMs ? <span className="tabular">{formatTs(t.tsMs)}</span> : null}
+                  <button
+                    type="button"
+                    className="ml-auto text-brand-text hover:underline"
+                    onClick={() =>
+                      onOpenSession({
+                        sessionId: t.sessionId,
+                        sessionFile: t.sessionFile,
+                        projectLabel: t.projectName,
+                        highlightLine: t.lineIndex,
+                      })
+                    }
+                  >
+                    세션 열기
+                  </button>
+                </div>
+                <p className="line-clamp-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-400 [overflow-wrap:anywhere]">
+                  {t.preview}
+                </p>
+              </article>
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

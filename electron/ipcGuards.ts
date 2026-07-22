@@ -93,6 +93,15 @@ export function sanitizeMessageId(raw: unknown): number | null {
   return positiveIntOrNull(raw)
 }
 
+export function sanitizeFileQuery(raw: unknown): string {
+  return String(raw ?? '').trim().slice(0, 300)
+}
+
+/** A path is only ever used as an exact lookup key, so just bound its length. */
+export function sanitizeFilePath(raw: unknown): string {
+  return String(raw ?? '').slice(0, 1000)
+}
+
 export function sanitizeTemplateName(raw: unknown): string {
   return String(raw ?? '')
     .trim()

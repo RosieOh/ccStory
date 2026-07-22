@@ -3,6 +3,8 @@
 import type {
   ExportOptions,
   FavoriteRow,
+  FileRow,
+  FileTouchRow,
   IndexProgress,
   PlanListRow,
   ProjectRow,
@@ -13,6 +15,7 @@ import type {
   StatsPayload,
   TagRow,
   TemplateRow,
+  UpdateStatus,
   UnifiedSearchHit,
 } from '../shared/ipc'
 
@@ -38,6 +41,12 @@ export type VaultApi = {
   templateCreate: (name: string, body: string) => Promise<number>
   templateUpdate: (id: number, name: string, body: string) => Promise<void>
   templateDelete: (id: number) => Promise<void>
+  filesList: (query: string) => Promise<FileRow[]>
+  fileTimeline: (path: string) => Promise<FileTouchRow[]>
+  updateStatus: () => Promise<UpdateStatus>
+  updateCheck: () => Promise<UpdateStatus>
+  updateInstall: () => Promise<void>
+  onUpdateStatus: (cb: (s: UpdateStatus) => void) => () => void
   onIndexUpdated: (cb: () => void) => () => void
   onIndexProgress: (cb: (p: IndexProgress) => void) => () => void
 }

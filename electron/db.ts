@@ -4,7 +4,7 @@ import Database from 'better-sqlite3'
 
 export type DbHandle = Database.Database
 
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 8
 
 export function openVaultDb(dbFile: string): DbHandle {
   const dir = path.dirname(dbFile)
@@ -71,6 +71,8 @@ function migrate(db: DbHandle) {
       cache_read_tokens INTEGER,
       cache_creation_tokens INTEGER,
       is_sidechain INTEGER NOT NULL DEFAULT 0,
+      cwd TEXT,
+      git_branch TEXT,
       UNIQUE(session_id, line_index)
     );
 
@@ -140,6 +142,15 @@ function migrate(db: DbHandle) {
       PRIMARY KEY (message_id, tag_id)
     );
 
+    -- Reverse index: which messages touched which file. Lets the app answer
+    -- "when did I last work on App.tsx, and why" without scanning bodies.
+    CREATE TABLE IF NOT EXISTS file_refs (
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      basename TEXT NOT NULL,
+      PRIMARY KEY (message_id, path)
+    );
+
     CREATE TABLE IF NOT EXISTS templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -148,6 +159,8 @@ function migrate(db: DbHandle) {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE INDEX IF NOT EXISTS idx_file_refs_path ON file_refs(path);
+    CREATE INDEX IF NOT EXISTS idx_file_refs_basename ON file_refs(basename);
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
   `)
@@ -166,6 +179,8 @@ function migrate(db: DbHandle) {
     ['cache_read_tokens', `ALTER TABLE messages ADD COLUMN cache_read_tokens INTEGER`],
     ['cache_creation_tokens', `ALTER TABLE messages ADD COLUMN cache_creation_tokens INTEGER`],
     ['is_sidechain', `ALTER TABLE messages ADD COLUMN is_sidechain INTEGER NOT NULL DEFAULT 0`],
+    ['cwd', `ALTER TABLE messages ADD COLUMN cwd TEXT`],
+    ['git_branch', `ALTER TABLE messages ADD COLUMN git_branch TEXT`],
   ]
   for (const [name, sql] of v4Adds) {
     if (!hasCol(name)) db.exec(sql)

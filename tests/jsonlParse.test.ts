@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  basenameOf,
+  extractFilePaths,
   effectiveRole,
   extractUsage,
   operationalLabel,
@@ -193,6 +195,58 @@ describe('tool_result extraction', () => {
       },
     })
     expect(parseJsonlLine(line)!.text).toBe('build ok')
+  })
+})
+
+describe('extractFilePaths', () => {
+  it('collects file_path / path / notebook_path values', () => {
+    expect(extractFilePaths({ file_path: 'c:\\repo\\src\\App.tsx' })).toEqual([
+      'c:\\repo\\src\\App.tsx',
+    ])
+    expect(extractFilePaths({ path: '/srv/app/main.py' })).toEqual(['/srv/app/main.py'])
+    expect(extractFilePaths({ notebook_path: '/nb/run.ipynb' })).toEqual(['/nb/run.ipynb'])
+  })
+
+  it('walks nested inputs such as MultiEdit edits[]', () => {
+    expect(
+      extractFilePaths({ edits: [{ file_path: '/a/one.ts' }, { file_path: '/a/two.ts' }] }),
+    ).toEqual(['/a/one.ts', '/a/two.ts'])
+  })
+
+  it('drops noise paths and non-path values', () => {
+    expect(extractFilePaths({ file_path: '/repo/node_modules/x/index.js' })).toEqual([])
+    expect(extractFilePaths({ file_path: '/repo/.git/HEAD' })).toEqual([])
+    expect(extractFilePaths({ path: 'not-a-path' })).toEqual([])
+    expect(extractFilePaths({ command: 'rm /etc/passwd' })).toEqual([])
+  })
+
+  it('deduplicates repeated paths', () => {
+    expect(
+      extractFilePaths({ file_path: '/a/one.ts', edits: [{ file_path: '/a/one.ts' }] }),
+    ).toEqual(['/a/one.ts'])
+  })
+
+  it('surfaces paths and cwd/branch on the parsed line', () => {
+    const line = JSON.stringify({
+      type: 'assistant',
+      cwd: 'c:\\repo',
+      gitBranch: 'main',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', name: 'Edit', input: { file_path: 'c:\\repo\\src\\App.tsx' } }],
+      },
+    })
+    const p = parseJsonlLine(line)!
+    expect(p.filePaths).toEqual(['c:\\repo\\src\\App.tsx'])
+    expect(p.cwd).toBe('c:\\repo')
+    expect(p.gitBranch).toBe('main')
+  })
+})
+
+describe('basenameOf', () => {
+  it('handles both separators', () => {
+    expect(basenameOf('c:\\repo\\src\\App.tsx')).toBe('App.tsx')
+    expect(basenameOf('/srv/app/main.py')).toBe('main.py')
   })
 })
 
