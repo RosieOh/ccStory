@@ -1,0 +1,482 @@
+/**
+ * UI strings. Korean is the source of truth (`ko` defines the `Messages` type),
+ * so a missing or misspelled key in another locale is a compile error rather
+ * than a silent fallback to the key name at runtime.
+ *
+ * Placeholders use `{name}` and are filled by `t(key, { name: value })`.
+ */
+
+export const LOCALES = ['ko', 'en'] as const
+export type Locale = (typeof LOCALES)[number]
+
+export const LOCALE_LABEL: Record<Locale, string> = {
+  ko: '한국어',
+  en: 'English',
+}
+
+/** Dates and numbers must follow the chosen language, not the OS default. */
+export const BCP47: Record<Locale, string> = {
+  ko: 'ko-KR',
+  en: 'en-US',
+}
+
+export const ko = {
+  // App shell
+  'app.subtitle': '로컬 대화 인덱스',
+  'app.theme.toggle': '테마 전환',
+  'app.theme.light': '라이트',
+  'app.theme.dark': '다크',
+  'app.palette': '명령 팔레트',
+  'app.reindex': '재인덱싱',
+  'app.status.idle': 'idle',
+  'app.status.counts': '프로젝트 {projects} · 태그 {tags}',
+  'app.status.hits': '결과 {hits} · ',
+  'app.indexing': '인덱싱 {current}/{total}',
+  'app.indexing.plans': '플랜 인덱싱…',
+  'app.update.install': '업데이트 설치',
+  'app.update.downloading': '업데이트 {percent}%',
+  'app.update.restart': '{version} 설치 후 재시작',
+
+  // Navigation
+  'nav.group.explore': '탐색',
+  'nav.group.analyze': '분석',
+  'nav.search': '검색',
+  'nav.files': '파일',
+  'nav.favorites': '즐겨찾기',
+  'nav.templates': '템플릿',
+  'nav.stats': '통계',
+  'nav.export': '보내기',
+  'nav.projects': '프로젝트',
+  'nav.projects.all': '전체 프로젝트',
+
+  // Command palette
+  'palette.placeholder': '명령·프로젝트·탭 검색…  (Esc 닫기)',
+  'palette.empty': '일치하는 명령이 없습니다.',
+  'palette.hint.tab': '탭',
+  'palette.hint.filter': '필터',
+  'palette.hint.action': '액션',
+  'palette.goto': '이동: {label}',
+  'palette.project': '프로젝트: {label}',
+  'palette.project.all': '프로젝트: 전체',
+  'palette.focusSearch': '검색창 포커스',
+
+  // Search
+  'search.placeholder': '키워드, 문장, 기억에 남는 단어…',
+  'search.label': '검색어',
+  'search.scope.messages': '대화',
+  'search.scope.plans': '플랜',
+  'search.scope.all': '전체',
+  'search.filters': '필터',
+  'search.loading': '검색 중…',
+  'search.resultCount': '{count}건',
+  'search.searching': ' · 검색 중…',
+  'search.emptyHint': '검색어를 비우면 최근 세션과 플랜을 보여줍니다.',
+  'search.recentSessions': '최근 세션',
+  'search.recentPlans': '최근 플랜',
+  'search.noResults': '일치하는 결과가 없습니다',
+  'search.noResults.hint': '정밀도를 「아무거나」로 낮추거나 기간 필터를 넓혀 보세요.',
+  'search.resetFilters': '필터 초기화',
+
+  // Inspector (search settings)
+  'inspector.title': '검색 설정',
+  'inspector.default': '기본값',
+  'inspector.applied': '{count}개 적용됨',
+  'inspector.reset': '초기화',
+  'inspector.close': '검색 설정 닫기',
+  'inspector.precision': '정밀도',
+  'inspector.precision.any': '아무거나',
+  'inspector.precision.all': '모두',
+  'inspector.precision.phrase': '구문',
+  'inspector.precision.anyHelp': '단어 중 하나라도 있으면 찾습니다.',
+  'inspector.precision.allHelp': '모든 단어를 포함한 결과만 찾습니다.',
+  'inspector.precision.phraseHelp': '입력한 문장 그대로를 찾습니다.',
+  'inspector.sort': '정렬',
+  'inspector.sort.relevance': '관련도',
+  'inspector.sort.newest': '최신',
+  'inspector.sort.oldest': '오래된',
+  'inspector.range': '기간',
+  'inspector.range.all': '전체',
+  'inspector.range.24h': '24시간',
+  'inspector.range.7d': '7일',
+  'inspector.range.30d': '30일',
+  'inspector.role': '역할',
+  'inspector.role.all': '전체',
+  'inspector.exclude': '제외',
+  'inspector.exclude.meta': '메타 줄',
+  'inspector.exclude.metaHelp': '권한·제목 등 시스템 기록',
+  'inspector.exclude.subagents': '서브에이전트',
+  'inspector.exclude.subagentsHelp': 'subagents 경로의 로그',
+  'inspector.tags': '태그',
+  'inspector.tags.placeholder': '새 태그 이름',
+  'inspector.tags.add': '추가',
+  'inspector.tags.empty': '태그 없음 — 우측 패널에서 추가',
+  'inspector.plansNote': '플랜은 {path} 아래 Markdown만 대상입니다. 왼쪽 프로젝트 필터는 대화 검색에만 적용됩니다.',
+  'inspector.allScopeNote':
+    '「전체」는 대화 히트를 먼저, 이어서 플랜 히트를 보여줍니다. 두 점수는 서로 비교되지 않습니다.',
+
+  // Roles
+  'role.me': '나',
+  'role.assistant': 'Claude',
+  'role.tool': '도구',
+  'class.meta': '메타',
+  'class.other': '기타',
+
+  // Row actions
+  'action.copy': '복사',
+  'action.select': '선택',
+  'action.session': '세션',
+  'action.favorite': '즐겨찾기',
+  'action.template': '템플릿',
+  'action.body': '본문',
+  'action.collapse': '접기',
+  'action.remove': '제거',
+  'action.close': '닫기',
+  'action.copyAll': '전체 복사',
+  'action.openSession': '세션 열기',
+
+  // Toasts
+  'toast.favorited': '즐겨찾기에 추가했습니다.',
+  'toast.templated': '템플릿으로 저장했습니다. 템플릿 탭에서 편집하세요.',
+  'toast.planCopied': '플랜 전체를 복사했습니다.',
+  'toast.reindexed': '재인덱싱 완료: 프로젝트 {projects}, 세션 {sessions}, 플랜 {plans}.',
+  'toast.exportEmpty': '보낼 메시지를 선택하세요.',
+  'toast.exported': '보내기 완료',
+  'toast.templateCreated': '템플릿을 만들었습니다.',
+  'toast.templateSaved': '템플릿을 저장했습니다.',
+  'toast.templateDeleted': '템플릿을 삭제했습니다.',
+  'toast.promptCopied': '채워진 프롬프트를 복사했습니다.',
+
+  // Favorites
+  'favorites.title': '즐겨찾기',
+  'favorites.empty': '비어 있습니다.',
+
+  // Files
+  'files.placeholder': '파일명 또는 경로…',
+  'files.search': '파일 검색',
+  'files.count': '{count}개 파일',
+  'files.empty': '기록된 파일이 없습니다. 재인덱싱하면 도구 호출에서 수집합니다.',
+  'files.selectPrompt': '파일을 선택하면 작업 이력이 표시됩니다',
+  'files.selectHint': '언제·어느 세션·어느 브랜치에서 그 파일을 다뤘는지 보여줍니다.',
+  'files.touches': '{touches}회 · {sessions}세션',
+
+  // Templates
+  'templates.new': '+ 새 템플릿',
+  'templates.empty': '아직 템플릿이 없습니다. 검색 결과의 「템플릿 저장」이나 위 버튼으로 만들 수 있습니다.',
+  'templates.untitled': '무제 템플릿',
+  'templates.name': '템플릿 이름',
+  'templates.save': '저장',
+  'templates.delete': '삭제',
+  'templates.bodyLabel': '본문 — {token} 형태로 채울 자리를 표시하세요.',
+  'templates.bodyPlaceholder': '예) {{언어}}로 작성된 {{파일}}을 리뷰하고 개선점을 제안해줘.',
+  'templates.variables': '변수 채우기',
+  'templates.preview': '미리보기',
+  'templates.previewEmpty': '본문을 입력하면 여기에 미리보기가 표시됩니다.',
+  'templates.copyFilled': '채워서 복사',
+
+  // Stats
+  'stats.title': '사용 통계',
+  'stats.loading': '불러오는 중…',
+  'stats.summary': '요약',
+  'stats.projects': '프로젝트',
+  'stats.sessions': '세션',
+  'stats.messages': '메시지',
+  'stats.byRole': '역할별 메시지',
+  'stats.tokens': '토큰 사용량 (실측)',
+  'stats.tokens.empty': '토큰 사용량 데이터가 없습니다. 재인덱싱하면 어시스턴트 응답의 usage에서 수집됩니다.',
+  'stats.tokens.input': '입력',
+  'stats.tokens.output': '출력',
+  'stats.tokens.cacheRead': '캐시 읽기',
+  'stats.tokens.cacheCreation': '캐시 생성',
+  'stats.tokens.suffix': '토큰',
+  'stats.byModel': '모델별 사용',
+  'stats.byModel.turns': '{turns}턴 · {tokens} 토큰',
+  'stats.topWords': '자주 등장한 단어',
+  'stats.activity.ts': '메시지 타임스탬프 기준 활동',
+  'stats.activity.mtime': '세션 수정일 기준 활동',
+
+  // Cost
+  'cost.title': '비용 추정',
+  'cost.total': '추정 총액',
+  'cost.byModel': '모델별 비용',
+  // Korean has no plural agreement, so one form covers both counts.
+  'cost.unpriced.one': '가격 미설정 1개 모델',
+  'cost.unpriced': '가격 미설정 {count}개 모델',
+  'cost.unpriced.hint': '가격을 입력하면 이 모델도 합계에 포함됩니다.',
+  'cost.editPrices': '가격표 편집',
+  'cost.donePrices': '편집 완료',
+  'cost.prices.title': '100만 토큰당 단가 (USD)',
+  'cost.prices.note':
+    '가격은 변동됩니다. 기본값은 {date} 기준이며, 여기서 수정한 값이 우선 적용됩니다.',
+  'cost.prices.model': '모델',
+  'cost.prices.input': '입력',
+  'cost.prices.output': '출력',
+  'cost.prices.cacheRead': '캐시 읽기',
+  'cost.prices.cacheWrite': '캐시 생성',
+  'cost.prices.reset': '기본값 복원',
+  'cost.prices.add': '모델 추가',
+  'cost.prices.addPlaceholder': '모델 ID',
+  'cost.disclaimer':
+    '실제 청구액이 아닌 추정치입니다. 로그에 기록된 토큰과 위 단가를 곱한 값이며, 할인·배치·무료 티어는 반영되지 않습니다.',
+
+  // Export
+  'export.excludeMeta': '보내기 시 메타 줄 제외',
+  'export.excludeSubagents': '서브에이전트 제외',
+  'export.markdown': 'Markdown 보내기',
+  'export.csv': 'CSV 보내기',
+  'export.copyResult': '결과 복사',
+  'export.placeholder': '검색 탭에서 메시지를 선택한 뒤 Markdown/CSV를 누르면 여기에 표시됩니다.',
+
+  // Transcript modal
+  'transcript.title': '세션 전체',
+  'transcript.hint': '한 JSONL 세션의 인덱스 순서 (최대 25,000줄) · Esc 로 닫기',
+  'transcript.showMeta': '메타 줄 표시 (권한·제목 등)',
+  'transcript.markdown': '마크다운 렌더링',
+  'transcript.showTools': '도구 호출·결과 표시',
+  'transcript.hidden': '{parts} 숨김',
+  'transcript.hidden.meta': '메타 {count}개',
+  'transcript.hidden.tools': '도구 {count}개',
+  'transcript.loadError': '세션을 불러오지 못했습니다.',
+  'transcript.more': '{shown} / {total} 행 — 스크롤하면 더 불러옵니다',
+  'transcript.clamped': '{total}KB 중 {shown}KB 표시 — 전체 보기',
+
+  // Plan modal
+  'plan.loadError': '플랜 본문을 불러오지 못했습니다.',
+
+  // Error boundary
+  'error.title': '화면을 표시하지 못했습니다',
+  'error.hint': '인덱스는 디스크에 그대로 있습니다. 다시 불러오면 대부분 복구됩니다.',
+  'error.reload': '다시 불러오기',
+  'error.dismiss': '무시하고 계속',
+} as const
+
+export type MessageKey = keyof typeof ko
+export type Messages = Record<MessageKey, string>
+
+export const en: Messages = {
+  'app.subtitle': 'Local conversation index',
+  'app.theme.toggle': 'Toggle theme',
+  'app.theme.light': 'Light',
+  'app.theme.dark': 'Dark',
+  'app.palette': 'Command palette',
+  'app.reindex': 'Reindex',
+  'app.status.idle': 'idle',
+  'app.status.counts': 'projects {projects} · tags {tags}',
+  'app.status.hits': 'hits {hits} · ',
+  'app.indexing': 'Indexing {current}/{total}',
+  'app.indexing.plans': 'Indexing plans…',
+  'app.update.install': 'Install update',
+  'app.update.downloading': 'Update {percent}%',
+  'app.update.restart': 'Restart to install {version}',
+
+  'nav.group.explore': 'Explore',
+  'nav.group.analyze': 'Analyze',
+  'nav.search': 'Search',
+  'nav.files': 'Files',
+  'nav.favorites': 'Favorites',
+  'nav.templates': 'Templates',
+  'nav.stats': 'Stats',
+  'nav.export': 'Export',
+  'nav.projects': 'Projects',
+  'nav.projects.all': 'All projects',
+
+  'palette.placeholder': 'Search commands, projects, tabs…  (Esc to close)',
+  'palette.empty': 'No matching commands.',
+  'palette.hint.tab': 'tab',
+  'palette.hint.filter': 'filter',
+  'palette.hint.action': 'action',
+  'palette.goto': 'Go to: {label}',
+  'palette.project': 'Project: {label}',
+  'palette.project.all': 'Project: all',
+  'palette.focusSearch': 'Focus search box',
+
+  'search.placeholder': 'Keyword, phrase, anything you remember…',
+  'search.label': 'Search query',
+  'search.scope.messages': 'Messages',
+  'search.scope.plans': 'Plans',
+  'search.scope.all': 'All',
+  'search.filters': 'Filters',
+  'search.loading': 'Searching…',
+  'search.resultCount': '{count} results',
+  'search.searching': ' · searching…',
+  'search.emptyHint': 'Clear the query to see recent sessions and plans.',
+  'search.recentSessions': 'Recent sessions',
+  'search.recentPlans': 'Recent plans',
+  'search.noResults': 'No matching results',
+  'search.noResults.hint': 'Lower precision to “Any” or widen the date range.',
+  'search.resetFilters': 'Reset filters',
+
+  'inspector.title': 'Search settings',
+  'inspector.default': 'Defaults',
+  'inspector.applied': '{count} applied',
+  'inspector.reset': 'Reset',
+  'inspector.close': 'Close search settings',
+  'inspector.precision': 'Precision',
+  'inspector.precision.any': 'Any',
+  'inspector.precision.all': 'All',
+  'inspector.precision.phrase': 'Phrase',
+  'inspector.precision.anyHelp': 'Matches if any word appears.',
+  'inspector.precision.allHelp': 'Matches only results containing every word.',
+  'inspector.precision.phraseHelp': 'Matches the exact phrase you typed.',
+  'inspector.sort': 'Sort',
+  'inspector.sort.relevance': 'Relevance',
+  'inspector.sort.newest': 'Newest',
+  'inspector.sort.oldest': 'Oldest',
+  'inspector.range': 'Range',
+  'inspector.range.all': 'All',
+  'inspector.range.24h': '24 hours',
+  'inspector.range.7d': '7 days',
+  'inspector.range.30d': '30 days',
+  'inspector.role': 'Role',
+  'inspector.role.all': 'All',
+  'inspector.exclude': 'Exclude',
+  'inspector.exclude.meta': 'Meta lines',
+  'inspector.exclude.metaHelp': 'System records such as permissions and titles',
+  'inspector.exclude.subagents': 'Subagents',
+  'inspector.exclude.subagentsHelp': 'Logs under subagents paths',
+  'inspector.tags': 'Tags',
+  'inspector.tags.placeholder': 'New tag name',
+  'inspector.tags.add': 'Add',
+  'inspector.tags.empty': 'No tags — add one in this panel',
+  'inspector.plansNote':
+    'Plans cover only Markdown under {path}. The project filter on the left applies to message search only.',
+  'inspector.allScopeNote':
+    '“All” lists message hits first, then plan hits. The two scores are not comparable.',
+
+  'role.me': 'Me',
+  'role.assistant': 'Claude',
+  'role.tool': 'Tool',
+  'class.meta': 'meta',
+  'class.other': 'other',
+
+  'action.copy': 'Copy',
+  'action.select': 'Select',
+  'action.session': 'Session',
+  'action.favorite': 'Favorite',
+  'action.template': 'Template',
+  'action.body': 'Body',
+  'action.collapse': 'Collapse',
+  'action.remove': 'Remove',
+  'action.close': 'Close',
+  'action.copyAll': 'Copy all',
+  'action.openSession': 'Open session',
+
+  'toast.favorited': 'Added to favorites.',
+  'toast.templated': 'Saved as a template. Edit it in the Templates tab.',
+  'toast.planCopied': 'Copied the whole plan.',
+  'toast.reindexed': 'Reindexed: {projects} projects, {sessions} sessions, {plans} plans.',
+  'toast.exportEmpty': 'Select messages to export first.',
+  'toast.exported': 'Export ready',
+  'toast.templateCreated': 'Template created.',
+  'toast.templateSaved': 'Template saved.',
+  'toast.templateDeleted': 'Template deleted.',
+  'toast.promptCopied': 'Copied the filled prompt.',
+
+  'favorites.title': 'Favorites',
+  'favorites.empty': 'Nothing here yet.',
+
+  'files.placeholder': 'File name or path…',
+  'files.search': 'Search files',
+  'files.count': '{count} files',
+  'files.empty': 'No files recorded yet. Reindex to collect them from tool calls.',
+  'files.selectPrompt': 'Select a file to see its history',
+  'files.selectHint': 'Shows when, in which session, and on which branch you touched it.',
+  'files.touches': '{touches} touches · {sessions} sessions',
+
+  'templates.new': '+ New template',
+  'templates.empty':
+    'No templates yet. Create one with “Template” on a search result, or the button above.',
+  'templates.untitled': 'Untitled template',
+  'templates.name': 'Template name',
+  'templates.save': 'Save',
+  'templates.delete': 'Delete',
+  'templates.bodyLabel': 'Body — mark fill-in slots as {token}.',
+  'templates.bodyPlaceholder': 'e.g. Review the {{file}} written in {{language}} and suggest improvements.',
+  'templates.variables': 'Fill variables',
+  'templates.preview': 'Preview',
+  'templates.previewEmpty': 'Type a body to see the preview here.',
+  'templates.copyFilled': 'Copy filled',
+
+  'stats.title': 'Usage stats',
+  'stats.loading': 'Loading…',
+  'stats.summary': 'Summary',
+  'stats.projects': 'Projects',
+  'stats.sessions': 'Sessions',
+  'stats.messages': 'Messages',
+  'stats.byRole': 'Messages by role',
+  'stats.tokens': 'Token usage (measured)',
+  'stats.tokens.empty':
+    'No token usage recorded. Reindex to collect it from assistant response usage.',
+  'stats.tokens.input': 'Input',
+  'stats.tokens.output': 'Output',
+  'stats.tokens.cacheRead': 'Cache read',
+  'stats.tokens.cacheCreation': 'Cache write',
+  'stats.tokens.suffix': 'tokens',
+  'stats.byModel': 'Usage by model',
+  'stats.byModel.turns': '{turns} turns · {tokens} tokens',
+  'stats.topWords': 'Frequent words',
+  'stats.activity.ts': 'Activity by message timestamp',
+  'stats.activity.mtime': 'Activity by session file date',
+
+  'cost.title': 'Estimated cost',
+  'cost.total': 'Estimated total',
+  'cost.byModel': 'Cost by model',
+  'cost.unpriced.one': '1 model without a price',
+  'cost.unpriced': '{count} models without a price',
+  'cost.unpriced.hint': 'Enter a price to include these in the total.',
+  'cost.editPrices': 'Edit prices',
+  'cost.donePrices': 'Done',
+  'cost.prices.title': 'Price per million tokens (USD)',
+  'cost.prices.note':
+    'Prices change. Defaults are as of {date}; anything you set here takes precedence.',
+  'cost.prices.model': 'Model',
+  'cost.prices.input': 'Input',
+  'cost.prices.output': 'Output',
+  'cost.prices.cacheRead': 'Cache read',
+  'cost.prices.cacheWrite': 'Cache write',
+  'cost.prices.reset': 'Restore defaults',
+  'cost.prices.add': 'Add model',
+  'cost.prices.addPlaceholder': 'Model ID',
+  'cost.disclaimer':
+    'An estimate, not your actual bill. It multiplies logged tokens by the prices above and ignores discounts, batch pricing, and free tiers.',
+
+  'export.excludeMeta': 'Exclude meta lines',
+  'export.excludeSubagents': 'Exclude subagents',
+  'export.markdown': 'Export Markdown',
+  'export.csv': 'Export CSV',
+  'export.copyResult': 'Copy result',
+  'export.placeholder': 'Select messages in the Search tab, then choose Markdown or CSV.',
+
+  'transcript.title': 'Full session',
+  'transcript.hint': 'Index order of one JSONL session (max 25,000 lines) · Esc to close',
+  'transcript.showMeta': 'Show meta lines (permissions, titles…)',
+  'transcript.markdown': 'Render markdown',
+  'transcript.showTools': 'Show tool calls and results',
+  'transcript.hidden': '{parts} hidden',
+  'transcript.hidden.meta': '{count} meta',
+  'transcript.hidden.tools': '{count} tool',
+  'transcript.loadError': 'Could not load the session.',
+  'transcript.more': '{shown} / {total} rows — scroll to load more',
+  'transcript.clamped': 'Showing {shown}KB of {total}KB — show all',
+
+  'plan.loadError': 'Could not load the plan body.',
+
+  'error.title': 'Could not render the screen',
+  'error.hint': 'Your index is still on disk. Reloading usually recovers it.',
+  'error.reload': 'Reload',
+  'error.dismiss': 'Dismiss and continue',
+}
+
+export const DICTIONARIES: Record<Locale, Messages> = { ko, en }
+
+/** Look up `key` and substitute `{name}` placeholders. */
+export function translate(
+  messages: Messages,
+  key: MessageKey,
+  params?: Record<string, string | number>,
+): string {
+  const raw = messages[key]
+  if (!params) return raw
+  return raw.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    name in params ? String(params[name]) : whole,
+  )
+}
