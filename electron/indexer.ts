@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { DbHandle } from './db.js'
 import type { DiscoveredProject, ToolAdapter } from './adapters.js'
 import { listAllJsonlForProject, readProjectDisplayTitle } from './claudeLayout.js'
-import { parseJsonlLine } from '../shared/jsonlParse.js'
+import { basenameOf, parseJsonlLine } from '../shared/jsonlParse.js'
 
 export { defaultClaudeProjectsRoot } from './claudeRoots.js'
 
@@ -66,8 +66,12 @@ export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoo
   const insMsg = db.prepare(
     `INSERT INTO messages
        (session_id, line_index, role, body, content_kinds, raw_preview, message_class,
-        ts_ms, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, is_sidechain)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ts_ms, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, is_sidechain,
+        cwd, git_branch)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+  const insFileRef = db.prepare(
+    `INSERT OR IGNORE INTO file_refs (message_id, path, basename) VALUES (?, ?, ?)`,
   )
 
   const tx = db.transaction(() => {
@@ -83,7 +87,7 @@ export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoo
       const body = parsed.text || parsed.rawPreview || ''
       const kinds = JSON.stringify(parsed.contentKinds)
       const u = parsed.usage
-      insMsg.run(
+      const info = insMsg.run(
         sessionId,
         idx,
         parsed.role,
@@ -98,7 +102,13 @@ export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoo
         u?.cacheReadTokens ?? null,
         u?.cacheCreationTokens ?? null,
         parsed.isSidechain ? 1 : 0,
+        parsed.cwd,
+        parsed.gitBranch,
       )
+      if (parsed.filePaths.length) {
+        const messageId = Number(info.lastInsertRowid)
+        for (const fp of parsed.filePaths) insFileRef.run(messageId, fp, basenameOf(fp))
+      }
       idx += 1
     }
     db.prepare(`UPDATE sessions SET message_count = ? WHERE id = ?`).run(idx, sessionId)

@@ -20,9 +20,45 @@ export const IPC = {
   templateCreate: 'vault:templateCreate',
   templateUpdate: 'vault:templateUpdate',
   templateDelete: 'vault:templateDelete',
+  filesList: 'vault:filesList',
+  fileTimeline: 'vault:fileTimeline',
+  updateCheck: 'vault:updateCheck',
+  updateInstall: 'vault:updateInstall',
+  updateStatus: 'vault:updateStatus',
   onIndexUpdated: 'vault:onIndexUpdated',
   onIndexProgress: 'vault:onIndexProgress',
+  onUpdateStatus: 'vault:onUpdateStatus',
 } as const
+
+export type FileRow = {
+  path: string
+  basename: string
+  /** How many messages touched it, and across how many sessions. */
+  touches: number
+  sessions: number
+  lastTouched: number | null
+  projectName: string
+}
+
+export type FileTouchRow = {
+  messageId: number
+  sessionId: number
+  sessionFile: string
+  projectName: string
+  role: string
+  tsMs: number | null
+  gitBranch: string | null
+  lineIndex: number
+  preview: string
+}
+
+export type UpdateStatus = {
+  /** `unsupported` = dev or unsigned build with no update feed. */
+  state: 'idle' | 'unsupported' | 'checking' | 'downloading' | 'ready' | 'error'
+  version?: string
+  percent?: number
+  message?: string
+}
 
 export type MessageClass = 'dialog' | 'meta' | 'other'
 

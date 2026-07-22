@@ -8,6 +8,8 @@ import { indexAdapterProject, indexSinglePath, pruneMissingProjectsAndSessions }
 import { getAvailableAdapters } from './adapters.js'
 import { fullReindexPlans, indexPlanSinglePath, isPathUnderPlansRoot } from './plansIndexer.js'
 import { unifiedSearch } from './search.js'
+import { checkForUpdates, getUpdateStatus, initAutoUpdate, installUpdate } from './updater.js'
+import { fileTimeline, listFiles } from './files.js'
 import { computeStats } from './stats.js'
 import { IPC } from '../shared/ipc.js'
 import type {
@@ -19,6 +21,8 @@ import type {
 } from '../shared/ipc.js'
 import {
   sanitizeExportMessageIds,
+  sanitizeFilePath,
+  sanitizeFileQuery,
   sanitizeExportOptions,
   sanitizeMessageId,
   sanitizePlanId,
@@ -302,6 +306,22 @@ function registerIpc() {
     if (id == null) return
     db.prepare(`DELETE FROM templates WHERE id = ?`).run(id)
   })
+
+  ipcMain.handle(IPC.filesList, async (_e, raw: unknown) => {
+    if (!db) return []
+    return listFiles(db, sanitizeFileQuery(raw))
+  })
+
+  ipcMain.handle(IPC.fileTimeline, async (_e, raw: unknown) => {
+    if (!db) return []
+    const p = sanitizeFilePath(raw)
+    if (!p) return []
+    return fileTimeline(db, p)
+  })
+
+  ipcMain.handle(IPC.updateStatus, async () => getUpdateStatus())
+  ipcMain.handle(IPC.updateCheck, async () => checkForUpdates())
+  ipcMain.handle(IPC.updateInstall, async () => installUpdate())
 
   ipcMain.handle(IPC.reindex, async () => {
     if (!db) return { projects: 0, sessions: 0, planFiles: 0 }
@@ -606,6 +626,7 @@ if (!app.requestSingleInstanceLock()) {
     applyContentSecurityPolicy()
     mainWindow?.webContents.once('did-finish-load', () => {
       void runInitialIndex().catch((err) => reportFatal('초기 인덱싱', err))
+      if (mainWindow) initAutoUpdate(mainWindow)
     })
   })
 }

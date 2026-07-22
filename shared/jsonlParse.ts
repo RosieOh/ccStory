@@ -28,6 +28,11 @@ export type ParsedLine = {
   usage: UsageTokens | null
   /** `isSidechain` flag — Claude Code marks subagent/side-thread lines true. */
   isSidechain: boolean
+  /** File paths this line's tool calls touched (empty for plain dialog). */
+  filePaths: string[]
+  /** Working directory / git branch recorded on the line, when present. */
+  cwd: string | null
+  gitBranch: string | null
 }
 
 function truncate(s: string, max: number): string {
@@ -147,6 +152,52 @@ function summarizeMetaPart(item: Record<string, unknown>, t: string): string {
     default:
       return `[${t}]`
   }
+}
+
+/** Input keys whose values are file paths across Claude Code's tool set. */
+const PATH_KEYS = new Set(['file_path', 'notebook_path', 'path'])
+
+/** Ignore transient/system paths — they add noise without answering "what did I work on". */
+const PATH_NOISE = /(node_modules|[\\/]\.git[\\/]|__pycache__|[\\/]dist[\\/]|[\\/]build[\\/]|AppData[\\/]Local[\\/]Temp|[\\/]tmp[\\/])/i
+
+/**
+ * Collect file paths a tool call touched, so sessions can be looked up by file
+ * ("when did I last work on App.tsx?"). Walks nested inputs because tools like
+ * MultiEdit carry `edits[].file_path`.
+ */
+export function extractFilePaths(input: unknown): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+
+  const visit = (node: unknown, depth: number) => {
+    if (depth > 4 || node == null) return
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1)
+      return
+    }
+    if (typeof node !== 'object') return
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (PATH_KEYS.has(k) && typeof v === 'string') {
+        const p = v.trim()
+        // Require a path-ish shape so free-text values don't sneak in.
+        if (p.length > 2 && p.length < 400 && /[\\/]/.test(p) && !PATH_NOISE.test(p) && !seen.has(p)) {
+          seen.add(p)
+          out.push(p)
+        }
+      } else if (typeof v === 'object') {
+        visit(v, depth + 1)
+      }
+    }
+  }
+
+  visit(input, 0)
+  return out
+}
+
+/** Trailing filename of a path, for grouping and display. */
+export function basenameOf(p: string): string {
+  const parts = p.split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] ?? p
 }
 
 /**
@@ -332,13 +383,15 @@ export function classifyMessage(
 export function extractTextFromContent(content: unknown): {
   text: string
   kinds: string[]
+  filePaths: string[]
 } {
   const kinds: string[] = []
-  if (content == null) return { text: '', kinds }
+  const filePaths: string[] = []
+  if (content == null) return { text: '', kinds, filePaths }
 
   if (typeof content === 'string') {
     kinds.push('string')
-    return { text: content, kinds }
+    return { text: content, kinds, filePaths }
   }
 
   if (Array.isArray(content)) {
@@ -358,6 +411,7 @@ export function extractTextFromContent(content: unknown): {
         parts.push(summarizeMetaPart(rec, ts))
       } else if (ts === 'tool_use') {
         const name = typeof rec.name === 'string' ? rec.name : 'tool'
+        for (const fp of extractFilePaths(rec.input)) filePaths.push(fp)
         parts.push(summarizeToolUse(name, rec.input))
       } else if (ts === 'tool_result') {
         parts.push(textFromToolResult(rec))
@@ -367,7 +421,11 @@ export function extractTextFromContent(content: unknown): {
         parts.push(summarizeMetaPart(rec, ts))
       }
     }
-    return { text: parts.join('\n'), kinds: [...new Set(kinds)] }
+    return {
+      text: parts.join('\n'),
+      kinds: [...new Set(kinds)],
+      filePaths: [...new Set(filePaths)],
+    }
   }
 
   if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
@@ -375,20 +433,20 @@ export function extractTextFromContent(content: unknown): {
     const lp = textFromLastPromptPart(c)
     if (lp) {
       kinds.push('last-prompt')
-      return { text: lp, kinds }
+      return { text: lp, kinds, filePaths }
     }
     const ty = typeof c.type === 'string' ? c.type : ''
     if (ty && META_KINDS.has(ty)) {
       kinds.push(ty)
-      return { text: summarizeMetaPart(c, ty), kinds }
+      return { text: summarizeMetaPart(c, ty), kinds, filePaths }
     }
     if (ty === 'tool_result') {
       kinds.push('tool_result')
-      return { text: textFromToolResult(c), kinds }
+      return { text: textFromToolResult(c), kinds, filePaths }
     }
     if (ty === 'thinking') {
       kinds.push('thinking')
-      return { text: textFromThinking(c), kinds }
+      return { text: textFromThinking(c), kinds, filePaths }
     }
   }
 
@@ -396,12 +454,12 @@ export function extractTextFromContent(content: unknown): {
     const tx = (content as { text?: unknown }).text
     if (typeof tx === 'string') {
       kinds.push('object.text')
-      return { text: tx, kinds }
+      return { text: tx, kinds, filePaths }
     }
   }
 
   kinds.push('unknown')
-  return { text: JSON.stringify(content), kinds }
+  return { text: JSON.stringify(content), kinds, filePaths }
 }
 
 export function parseJsonlLine(line: string): ParsedLine | null {
@@ -417,6 +475,9 @@ export function parseJsonlLine(line: string): ParsedLine | null {
       contentKinds: ['invalid_json'],
       rawPreview: truncate(trimmed, 200),
       messageClass: 'other',
+      filePaths: [],
+      cwd: null,
+      gitBranch: null,
       tsMs: null,
       model: null,
       usage: null,
@@ -428,6 +489,7 @@ export function parseJsonlLine(line: string): ParsedLine | null {
   const message = obj.message
   let text = ''
   let contentKinds: string[] = []
+  let filePaths: string[] = []
   let model: string | null = null
   let usage: UsageTokens | null = null
 
@@ -436,12 +498,14 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     const extracted = extractTextFromContent(m.content)
     text = extracted.text
     contentKinds = extracted.kinds
+    filePaths = extracted.filePaths
     if (typeof m.model === 'string' && m.model.trim()) model = m.model
     usage = extractUsage(m.usage)
   } else if (typeof obj.content !== 'undefined') {
     const extracted = extractTextFromContent(obj.content)
     text = extracted.text
     contentKinds = extracted.kinds
+    filePaths = extracted.filePaths
   }
 
   const topType = str(obj.type)
@@ -467,6 +531,21 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     : classifyMessage(role, contentKinds, text || rawPreview)
   const tsMs = parseTimestampMs(obj.timestamp)
   const isSidechain = obj.isSidechain === true
+  const cwd = str(obj.cwd) || null
+  const gitBranch = str(obj.gitBranch) || null
 
-  return { role, text, contentKinds, rawPreview, messageClass, tsMs, model, usage, isSidechain }
+  return {
+    role,
+    text,
+    contentKinds,
+    rawPreview,
+    messageClass,
+    tsMs,
+    model,
+    usage,
+    isSidechain,
+    filePaths,
+    cwd,
+    gitBranch,
+  }
 }

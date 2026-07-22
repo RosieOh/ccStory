@@ -3,6 +3,8 @@ import { IPC } from '../shared/ipc.js'
 import type {
   ExportOptions,
   FavoriteRow,
+  FileRow,
+  FileTouchRow,
   IndexProgress,
   PlanListRow,
   ProjectRow,
@@ -13,6 +15,7 @@ import type {
   StatsPayload,
   TagRow,
   TemplateRow,
+  UpdateStatus,
   UnifiedSearchHit,
 } from '../shared/ipc.js'
 
@@ -45,6 +48,16 @@ contextBridge.exposeInMainWorld('vault', {
   templateUpdate: (id: number, name: string, body: string): Promise<void> =>
     ipcRenderer.invoke(IPC.templateUpdate, id, name, body),
   templateDelete: (id: number): Promise<void> => ipcRenderer.invoke(IPC.templateDelete, id),
+  filesList: (query: string): Promise<FileRow[]> => ipcRenderer.invoke(IPC.filesList, query),
+  fileTimeline: (path: string): Promise<FileTouchRow[]> => ipcRenderer.invoke(IPC.fileTimeline, path),
+  updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateStatus),
+  updateCheck: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateCheck),
+  updateInstall: (): Promise<void> => ipcRenderer.invoke(IPC.updateInstall),
+  onUpdateStatus: (cb: (s: UpdateStatus) => void): (() => void) => {
+    const listener = (_e: unknown, s: UpdateStatus): void => cb(s)
+    ipcRenderer.on(IPC.onUpdateStatus, listener)
+    return () => ipcRenderer.removeListener(IPC.onUpdateStatus, listener)
+  },
   onIndexUpdated: (cb: () => void): (() => void) => {
     const listener = (): void => cb()
     ipcRenderer.on(IPC.onIndexUpdated, listener)
