@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && electron-builder",
+    "release": "tsc -b && vite build && electron-builder --publish always",
     "preview": "vite preview",
     "poc": "tsx scripts/poc-parse.ts",
     "postinstall": "electron-builder install-app-deps",
