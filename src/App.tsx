@@ -684,6 +684,11 @@ export default function App() {
                   >
                     <span className="flex items-baseline gap-2">
                       <span className="badge tone-violet">{t('plan.badge')}</span>
+                      {pl.archived && (
+                        <span className="badge tone-amber" title={t('badge.archived.hint')}>
+                          {t('badge.archived')}
+                        </span>
+                      )}
                       <span className="min-w-0 truncate font-semibold text-ink-1">{pl.title}</span>
                       <span className="ml-auto shrink-0 text-[12.5px] text-ink-3 tabular">
                         {new Date(pl.mtime).toLocaleDateString(BCP47[locale])}

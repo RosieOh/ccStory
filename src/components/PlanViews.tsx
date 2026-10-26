@@ -43,6 +43,11 @@ export function PlanSearchHitCard({
       <div className="flex items-start gap-2">
         <div className="row-meta flex-1">
           <span className="badge tone-violet">{t('plan.badge')}</span>
+          {h.archived && (
+            <span className="badge tone-amber" title={t('badge.archived.hint')}>
+              {t('badge.archived')}
+            </span>
+          )}
           <span className="truncate font-semibold text-ink-2" title={h.filePath}>
             {h.title}
           </span>
