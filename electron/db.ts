@@ -43,8 +43,8 @@ export function openVaultDb(dbFile: string, opts: { migrate?: boolean } = {}): D
  * - **Index** (projects, sessions, messages, file_refs, plan_files + FTS): derived from
  *   files under ~/.claude, rebuildable — except sessions archived after their source
  *   file was deleted (see `archived_at`), which only exist here.
- * - **User data** (favorites, tags, message_tags, templates, model_prices, settings in
- *   `meta`): never derivable. Favorites and tags key on `messages.msg_key` (the line's
+ * - **User data** (favorites, tags, message_tags, templates, model_prices, app_opens,
+ *   settings in `meta`): never derivable. Favorites and tags key on `messages.msg_key` (the line's
  *   stable `uuid`), not on row ids, so re-indexing a session can never drop them.
  */
 const SCHEMA_SQL = `
@@ -226,6 +226,12 @@ const SCHEMA_SQL = `
     cache_write_per_mtok REAL NOT NULL,
     cache_write_1h_per_mtok REAL,
     updated_at INTEGER NOT NULL
+  );
+
+  -- Local days (YYYY-MM-DD) the app was opened or focused: the dogfooding measure in
+  -- docs/roadmap.md. Dates only, never sent anywhere. User data, so no reindex needed.
+  CREATE TABLE IF NOT EXISTS app_opens (
+    day TEXT PRIMARY KEY
   );
 
   CREATE INDEX IF NOT EXISTS idx_file_refs_path ON file_refs(path);
