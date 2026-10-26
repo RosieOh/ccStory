@@ -11,10 +11,16 @@ import type { UpdateStatus } from '../shared/ipc.js'
  *
  * Only meaningful in a packaged, code-signed build. In dev (or unsigned) the
  * updater is skipped entirely rather than logging errors on every launch.
+ *
+ * The update check is the app's only network request (ADR-0005), so it can be turned
+ * off in Settings; when off, nothing is loaded and no request is made.
  */
 
 let status: UpdateStatus = { state: 'idle' }
 let win: BrowserWindow | null = null
+let enabled = true
+let timer: ReturnType<typeof setInterval> | null = null
+let wired = false
 
 function push(next: UpdateStatus) {
   status = next
@@ -58,10 +64,15 @@ function load(): Updater | null {
   }
 }
 
-export function initAutoUpdate(browserWindow: BrowserWindow): void {
+export function initAutoUpdate(browserWindow: BrowserWindow, isEnabled: boolean): void {
   win = browserWindow
+  enabled = isEnabled
   if (!updatesSupported()) {
     push({ state: 'unsupported' })
+    return
+  }
+  if (!enabled) {
+    push({ state: 'disabled' })
     return
   }
 
@@ -73,6 +84,8 @@ export function initAutoUpdate(browserWindow: BrowserWindow): void {
 
   au.autoDownload = true
   au.autoInstallOnAppQuit = false
+  if (wired) return startChecks()
+  wired = true
 
   au.on('checking-for-update', () => push({ state: 'checking' }))
   au.on('update-not-available', () => push({ state: 'idle' }))
@@ -92,14 +105,34 @@ export function initAutoUpdate(browserWindow: BrowserWindow): void {
     push({ state: 'error', message: err instanceof Error ? err.message : String(err) })
   })
 
+  startChecks()
+}
+
+function startChecks() {
   void checkForUpdates()
   // A long-lived window should still notice releases; daily is plenty here.
-  setInterval(() => void checkForUpdates(), 24 * 60 * 60 * 1000)
+  if (!timer) timer = setInterval(() => void checkForUpdates(), 24 * 60 * 60 * 1000)
+}
+
+/** Settings toggle. Turning it off stops future checks; an already-downloaded update stays installable. */
+export function setAutoUpdateEnabled(next: boolean): void {
+  enabled = next
+  if (!next) {
+    if (timer) clearInterval(timer)
+    timer = null
+    if (status.state !== 'ready') push({ state: updatesSupported() ? 'disabled' : 'unsupported' })
+    return
+  }
+  if (win) initAutoUpdate(win, true)
 }
 
 export async function checkForUpdates(): Promise<UpdateStatus> {
   if (!updatesSupported()) {
     push({ state: 'unsupported' })
+    return status
+  }
+  if (!enabled) {
+    push({ state: 'disabled' })
     return status
   }
   const au = load()
