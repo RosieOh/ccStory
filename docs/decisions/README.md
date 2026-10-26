@@ -11,5 +11,6 @@
 | [0007-worker-threads.md](0007-worker-threads.md) | Index and query work runs on worker threads | Accepted |
 | [0008-fts-tokenizer.md](0008-fts-tokenizer.md) | Keep unicode61; substring fallback instead of trigram | Accepted |
 | [0009-glass-visual-system.md](0009-glass-visual-system.md) | Liquid-glass visual system | Accepted |
+| [0010-vault-db-backups.md](0010-vault-db-backups.md) | Full snapshots of the vault DB, with recovery at startup | Accepted |
 
 When a decision is superseded, mark the old ADR **Superseded** and link to the replacement.
