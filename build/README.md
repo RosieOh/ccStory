@@ -2,20 +2,22 @@
 
 `electron-builder` picks these up automatically (`directories.buildResources`).
 
-## Icons (required before a public release)
+## Icons
 
-Drop three files here — without them the installer ships the default Electron icon:
+`icon.svg` is the source: the app's brand mark (the vault glyph on the brand gradient)
+on the macOS icon grid. The three files electron-builder uses are generated from it:
 
-| File | Size | Used by |
-|------|------|---------|
-| `icon.icns` | 1024×1024 source | macOS |
-| `icon.ico` | 256×256 (multi-size) | Windows |
-| `icon.png` | 512×512 | Linux |
+| File | Contents | Used by |
+|------|----------|---------|
+| `icon.icns` | 16–1024 px, with the macOS grid margin and shadow | macOS |
+| `icon.ico` | 16, 24, 32, 48, 64, 128, 256 px, each rendered from the SVG, full-bleed | Windows |
+| `icon.png` | 512 px, full-bleed | Linux |
 
-A single 1024×1024 PNG can generate all three:
+After editing the SVG, regenerate them (needs `rsvg-convert`, macOS `iconutil` and
+Python Pillow):
 
 ```bash
-npx electron-icon-builder --input=./source-icon.png --output=./build
+scripts/build-icons.sh
 ```
 
 ## Code signing
