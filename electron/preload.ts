@@ -3,16 +3,22 @@ import type { ModelPrice } from '../shared/pricing.js'
 import { IPC } from '../shared/ipc.js'
 import type {
   ExportOptions,
+  ExportSaveResult,
   FavoriteRow,
   FileRow,
   FileTouchRow,
   IndexProgress,
   PlanListRow,
   ProjectRow,
+  PromptQuery,
+  PromptRow,
   RecentSessionRow,
   ReindexResult,
   SearchFilters,
+  SessionInfo,
   SessionMessageRow,
+  Settings,
+  SettingsInfo,
   StatsPayload,
   TagRow,
   TemplateRow,
@@ -22,27 +28,33 @@ import type {
 
 contextBridge.exposeInMainWorld('vault', {
   projectsList: (): Promise<ProjectRow[]> => ipcRenderer.invoke(IPC.projectsList),
-  search: (filters: SearchFilters): Promise<UnifiedSearchHit[]> => ipcRenderer.invoke(IPC.search, filters),
+  search: (filters: SearchFilters): Promise<UnifiedSearchHit[] | null> => ipcRenderer.invoke(IPC.search, filters),
   plansList: (): Promise<PlanListRow[]> => ipcRenderer.invoke(IPC.plansList),
   planBody: (planId: number): Promise<string> => ipcRenderer.invoke(IPC.planBody, planId),
-  reindex: (): Promise<ReindexResult> => ipcRenderer.invoke(IPC.reindex),
+  reindex: (reparse?: boolean): Promise<ReindexResult> => ipcRenderer.invoke(IPC.reindex, reparse === true),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke(IPC.copyText, text),
+  messageBody: (messageId: number): Promise<string> => ipcRenderer.invoke(IPC.messageBody, messageId),
   favoritesList: (): Promise<FavoriteRow[]> => ipcRenderer.invoke(IPC.favoritesList),
   favoriteAdd: (messageId: number): Promise<void> => ipcRenderer.invoke(IPC.favoriteAdd, messageId),
-  favoriteRemove: (messageId: number): Promise<void> => ipcRenderer.invoke(IPC.favoriteRemove, messageId),
+  favoriteRemove: (msgKey: string): Promise<void> => ipcRenderer.invoke(IPC.favoriteRemove, msgKey),
   tagsList: (): Promise<TagRow[]> => ipcRenderer.invoke(IPC.tagsList),
   tagCreate: (name: string, color?: string | null): Promise<number> =>
     ipcRenderer.invoke(IPC.tagCreate, name, color ?? null),
-  messageTagsSet: (messageId: number, tagIds: number[]): Promise<void> =>
-    ipcRenderer.invoke(IPC.messageTagsSet, messageId, tagIds),
+  tagRename: (id: number, name: string): Promise<boolean> => ipcRenderer.invoke(IPC.tagRename, id, name),
+  tagDelete: (id: number): Promise<void> => ipcRenderer.invoke(IPC.tagDelete, id),
+  messageTagsSet: (msgKey: string, tagIds: number[]): Promise<void> =>
+    ipcRenderer.invoke(IPC.messageTagsSet, msgKey, tagIds),
   stats: (): Promise<StatsPayload> => ipcRenderer.invoke(IPC.stats),
   exportMessages: (messageIds: number[], format: 'md' | 'csv', opts?: ExportOptions): Promise<string> =>
     ipcRenderer.invoke(IPC.exportMessages, messageIds, format, opts ?? {}),
-  messageTagsGet: (messageId: number): Promise<number[]> => ipcRenderer.invoke(IPC.messageTagsGet, messageId),
+  exportSave: (text: string, format: 'md' | 'csv'): Promise<ExportSaveResult> =>
+    ipcRenderer.invoke(IPC.exportSave, text, format),
   sessionTranscript: (sessionId: number): Promise<SessionMessageRow[]> =>
     ipcRenderer.invoke(IPC.sessionTranscript, sessionId),
+  sessionInfo: (sessionId: number): Promise<SessionInfo | null> => ipcRenderer.invoke(IPC.sessionInfo, sessionId),
   recentSessions: (projectId?: number | null): Promise<RecentSessionRow[]> =>
     ipcRenderer.invoke(IPC.recentSessions, projectId ?? null),
+  promptsList: (q: PromptQuery): Promise<PromptRow[]> => ipcRenderer.invoke(IPC.promptsList, q),
   pricesList: (): Promise<ModelPrice[]> => ipcRenderer.invoke(IPC.pricesList),
   pricesSave: (prices: ModelPrice[]): Promise<ModelPrice[]> =>
     ipcRenderer.invoke(IPC.pricesSave, prices),
@@ -55,6 +67,9 @@ contextBridge.exposeInMainWorld('vault', {
   templateDelete: (id: number): Promise<void> => ipcRenderer.invoke(IPC.templateDelete, id),
   filesList: (query: string): Promise<FileRow[]> => ipcRenderer.invoke(IPC.filesList, query),
   fileTimeline: (path: string): Promise<FileTouchRow[]> => ipcRenderer.invoke(IPC.fileTimeline, path),
+  settingsGet: (): Promise<SettingsInfo> => ipcRenderer.invoke(IPC.settingsGet),
+  settingsSet: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke(IPC.settingsSet, patch),
+  archivePurge: (): Promise<number> => ipcRenderer.invoke(IPC.archivePurge),
   updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateStatus),
   updateCheck: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateCheck),
   updateInstall: (): Promise<void> => ipcRenderer.invoke(IPC.updateInstall),
