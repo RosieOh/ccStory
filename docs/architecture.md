@@ -39,7 +39,8 @@ flowchart LR
 - **Main**: window, IPC handlers, file watcher, schema migration, and light DB work only
   (lookups by id, user-data writes, export). See [ADR-0007](decisions/0007-worker-threads.md).
 - **Index worker** (`electron/indexWorker.ts`): the only writer of index tables. Full scans
-  on startup / "재인덱싱", plus file events forwarded from the watcher.
+  on startup / "재인덱싱", plus file events forwarded from the watcher. DB snapshots
+  (`VACUUM INTO`) run here too, queued with scans.
 - **Query worker** (`electron/queryWorker.ts`): a `query_only` connection serving search,
   stats, transcripts, prompts and the files view — every query that can take hundreds of
   milliseconds on a large corpus.
@@ -66,6 +67,7 @@ CSP `connect-src 'none'` in production, navigation and permission requests denie
 - **Plans (read-only)**: `~/.claude/plans/**/*.md` (depth 8) → `plan_files`.
 - **App database**: `app.getPath('userData')/vault.db` (WAL). `VAULT_USER_DATA` (absolute)
   overrides the folder — used by end-to-end runs so the real profile is untouched.
+- **Backups**: `userData/backups/vault-<UTC yyyymmdd-hhmmss>-<reason>.db`; see Backups.
 
 ## Indexing
 
@@ -145,12 +147,34 @@ User data (never derivable — never dropped by a migration):
 - `model_prices` — per-model USD/MTok incl. `cache_write_1h_per_mtok`; seeded from
   `shared/pricing.ts`, user edits win (see Cost estimation).
 - `meta` — `schema_version`, `prices_seed_version`, settings as `setting.*`
-  (`archiveMode`, `autoUpdate`).
+  (`archiveMode`, `autoUpdate`, `backupKeep`).
 
 **Migrations.** From v9 on, a migration must never drop `sessions`/`messages`; to force a
 re-parse, call `requestFullReparse` (resets `indexed_bytes`). The v≤8 → v9 migration moved
 favorites/tags to stable keys by re-reading the referenced lines, then rebuilt the index
-tables. Document every bump here.
+tables. Before any migration the old file is copied to the backup folder. Document every
+bump here.
+
+## Backups
+
+`electron/backup.ts`, [ADR-0010](decisions/0010-vault-db-backups.md). In Keep mode the DB
+is the only copy of deleted transcripts, so it is snapshotted:
+
+| When | How | Where it runs |
+|------|-----|---------------|
+| Daily (after the first scan, then checked hourly) | `VACUUM INTO` `.tmp` → rename | index worker |
+| "Back up now" | same | index worker |
+| Before a schema migration | file copy (clone on APFS) before any connection opens | main, at startup |
+| Before "Delete all archived" (purge refused if it fails) | `VACUUM INTO` | index worker |
+| Before a restore | rename of the live file | main, all connections closed |
+
+The newest `backupKeep` (0 / 1 / **3** / 7) are kept. 0 stops automatic snapshots without
+deleting any. Snapshots are skipped below 1.2× the DB size of free space.
+`openVaultDbWithRecovery` quarantines a DB that will not open (`vault.db.corrupt-<time>`)
+and installs the newest backup that passes `verifyBackup`: `quick_check`, a vault schema
+no newer than `SCHEMA_VERSION`. Only when no backup passes is an empty DB created; either
+way a dialog says what happened. Restore verifies first, then closes every connection,
+swaps the files and relaunches the app.
 
 ## Search
 
