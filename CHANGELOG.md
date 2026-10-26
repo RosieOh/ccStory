@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Runtime and security (v0.5.1)
+
+- Electron 33 → 44.9.3. Electron patches only its latest three majors, so 33 no longer
+  received Chromium security fixes; the app renders transcript Markdown that contains
+  web pages and tool output. 45.0.0 was six days old, so the mature 44 line was chosen.
+- better-sqlite3 11 → 13: N-API prebuilds for every desktop platform. Nothing is compiled
+  on install, the same binary loads in Node and Electron, and `postinstall`
+  (`install-app-deps`), the Electron-as-Node test runner and CI's `npm rebuild` are gone.
+  `npm run test:db` and `npm run bench` now run under plain Node.
+- electron-builder 26, electron-updater 6.8.11, vite 6.4, vitest 4.1, tsx 4.23 —
+  `npm audit` reports 0 vulnerabilities (was 1 high in production dependencies:
+  js-yaml, used by electron-updater to read the update feed; dev-server and test-runner
+  advisories in vite 5 / vitest 3 / esbuild).
+- CI and release run on Node 22. Dependabot checks only `electron`, `electron-updater`,
+  `better-sqlite3` and GitHub Actions, monthly.
+- Fixed: the release workflow packaged without building first (`dist/` and
+  `dist-electron/` do not exist on a fresh checkout), so the first tag would have
+  published installers that cannot start.
+
 ### Liquid-glass UI ([ADR-0009](docs/decisions/0009-glass-visual-system.md))
 
 The interface now matches the owner's other tools instead of a generic console look:
