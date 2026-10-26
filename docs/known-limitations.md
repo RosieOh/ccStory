@@ -19,9 +19,13 @@ blocks, `isMeta`). A new harness marker shows up as a prompt until it is added t
 
 ## Archive growth
 
-In Keep mode the vault DB only grows: about 850 MB for 5.5 GB of transcripts on the
+In Keep mode the vault DB only grows: about 800 MB for 5.5 GB of transcripts on the
 audited machine (parsed text, FTS index, metadata). Settings shows the size; "Delete all
 archived" removes archived sessions (favorites keep their snapshots).
+
+Backups are full snapshots, so the default of three takes about 3× the DB size on top
+(≈2.4 GB on the audited machine). Settings shows the total and lets you keep 1 or turn
+automatic backups off (ADR-0010).
 
 ## Plans are not archived
 
