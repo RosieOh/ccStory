@@ -53,7 +53,7 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
         className="w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-e3"
         role="dialog"
         aria-modal="true"
-        aria-label="명령 팔레트"
+        aria-label={t('app.palette')}
         onClick={(e) => e.stopPropagation()}
       >
         <input
