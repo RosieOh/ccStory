@@ -78,6 +78,12 @@ corpus (`VAULT_USER_DATA` pointed at a scratch dir):
 - Deleted transcripts were ignored by the live watcher (`unlink` was dropped).
 - `CLAUDE_HOME` pointing at a folder not named `.claude` silently disabled live updates.
 - `LIKE` fallbacks stripped `%` / `_` instead of escaping them (`snake_case` could not be found).
+- Prompts: user turns whose `turnOrigin` is `task_notification`, `peer` or `system` are
+  never counted as typed prompts (independent of the text markers).
+- Files: copies of API requests (`api-request-blob`) no longer add file touches, so an
+  edit is not listed twice.
+- Stats: compact numbers go through B/T (`27.7B`, not `27650.3M`); "words I use most"
+  counts the prompts containing a word, so one pasted log no longer dominates.
 
 ### Earlier unreleased work
 
