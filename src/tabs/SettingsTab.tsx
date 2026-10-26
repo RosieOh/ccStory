@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { SettingsInfo, UpdateStatus } from '../../shared/ipc'
+import { BACKUP_KEEP_CHOICES, type BackupInfo, type BackupReason, type SettingsInfo, type UpdateStatus } from '../../shared/ipc'
 import { LOCALES, LOCALE_LABEL, type MessageKey } from '../../shared/i18n'
 import { useI18n } from '../i18n'
+import { formatTs } from '../format'
 import { Segmented } from '../ui'
 
 function formatBytes(n: number): string {
@@ -21,6 +22,14 @@ const UPDATE_STATE_KEY: Record<UpdateStatus['state'], MessageKey> = {
   error: 'settings.update.state.error',
 }
 
+const REASON_KEY: Record<BackupReason, MessageKey> = {
+  daily: 'settings.backup.reason.daily',
+  manual: 'settings.backup.reason.manual',
+  'pre-migration': 'settings.backup.reason.pre-migration',
+  'pre-purge': 'settings.backup.reason.pre-purge',
+  'pre-restore': 'settings.backup.reason.pre-restore',
+}
+
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
     <section className="glass panel flex flex-col gap-4 p-5">
@@ -30,6 +39,108 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
       </div>
       {children}
     </section>
+  )
+}
+
+/**
+ * Snapshots of the vault DB. Restoring swaps the file and relaunches the app, so the
+ * button asks for a second click like the other irreversible-looking actions.
+ */
+function BackupSection({ onStatus, refreshKey }: { onStatus: (s: string) => void; refreshKey: number }) {
+  const { locale, t } = useI18n()
+  const [info, setInfo] = useState<BackupInfo | null>(null)
+  const [running, setRunning] = useState(false)
+  const [confirm, setConfirm] = useState<string | null>(null)
+
+  const load = useCallback(async () => setInfo(await window.vault.backupsList()), [])
+  useEffect(() => {
+    void load()
+  }, [load, refreshKey])
+
+  useEffect(() => {
+    if (!confirm) return
+    const timer = setTimeout(() => setConfirm(null), 4000)
+    return () => clearTimeout(timer)
+  }, [confirm])
+
+  if (!info) return null
+
+  const backUpNow = async () => {
+    setRunning(true)
+    try {
+      const r = await window.vault.backupCreate()
+      if (r.ok) onStatus(t('toast.backup.done', { size: formatBytes(r.file.sizeBytes) }))
+      else if (r.error === 'disk') onStatus(t('toast.backup.disk'))
+      else onStatus(t('toast.backup.failed', { message: r.message ?? '' }))
+    } finally {
+      setRunning(false)
+      await load()
+    }
+  }
+
+  const restore = async (name: string) => {
+    if (confirm !== name) {
+      setConfirm(name)
+      return
+    }
+    setConfirm(null)
+    // On success the app relaunches and this never resolves.
+    const r = await window.vault.backupRestore(name)
+    onStatus(t('toast.restore.failed', { message: r.message ?? r.error }))
+    await load()
+  }
+
+  return (
+    <Section title={t('settings.backup.title')} desc={t('settings.backup.help')}>
+      <div className="flex flex-wrap items-center gap-3">
+        <Segmented
+          label={t('settings.backup.keep')}
+          value={String(info.keep)}
+          onChange={async (v) => {
+            await window.vault.settingsSet({ backupKeep: Number(v) })
+            await load()
+          }}
+          options={BACKUP_KEEP_CHOICES.map((n) => [String(n), n === 0 ? t('settings.off') : String(n)] as const)}
+        />
+        <button type="button" className="btn btn-tertiary btn-xs" disabled={running} onClick={() => void backUpNow()}>
+          {running ? t('settings.backup.running') : t('settings.backup.now')}
+        </button>
+        <button type="button" className="btn btn-tertiary btn-xs" onClick={() => void window.vault.backupsReveal()}>
+          {t('settings.backup.reveal')}
+        </button>
+        {info.items.length > 0 && (
+          <span className="text-[13px] text-ink-3 tabular">
+            {t('settings.backup.total', { count: info.items.length, size: formatBytes(info.totalBytes) })}
+          </span>
+        )}
+      </div>
+      {info.keep === 0 && <p className="alert tone-amber">{t('settings.backup.offNote')}</p>}
+      {info.items.length === 0 ? (
+        <p className="text-[13px] text-ink-3">{t('settings.backup.empty')}</p>
+      ) : (
+        <div className="flex flex-col">
+          {info.items.map((b) => (
+            <div key={b.name} className="row flex items-center gap-3" data-active={confirm === b.name || undefined}>
+              <div className="row-meta flex-1">
+                <span className="tabular text-ink-1">{formatTs(b.createdAt, locale)}</span>
+                <span className="badge tone-gray">{t(REASON_KEY[b.reason])}</span>
+                <span className="tabular">{formatBytes(b.sizeBytes)}</span>
+              </div>
+              <div className="row-actions">
+                <button
+                  type="button"
+                  className={`btn btn-xs ${confirm === b.name ? 'btn-danger' : 'btn-tertiary'}`}
+                  onClick={() => void restore(b.name)}
+                >
+                  {confirm === b.name ? t('settings.backup.restoreConfirm') : t('settings.backup.restore')}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {info.items.length > 0 && <p className="text-[12.5px] text-ink-3">{t('settings.backup.restoreNote')}</p>}
+    </Section>
   )
 }
 
@@ -53,6 +164,8 @@ export function SettingsTab({
   const [info, setInfo] = useState<SettingsInfo | null>(null)
   const [confirmPurge, setConfirmPurge] = useState(false)
   const [reparsing, setReparsing] = useState(false)
+  // A purge takes a backup first; bump this so the backup list shows it.
+  const [backupsVersion, setBackupsVersion] = useState(0)
 
   const load = useCallback(async () => setInfo(await window.vault.settingsGet()), [])
   useEffect(() => {
@@ -99,18 +212,27 @@ export function SettingsTab({
                     return
                   }
                   setConfirmPurge(false)
-                  const n = await window.vault.archivePurge()
-                  onStatus(t('toast.purged', { count: n }))
-                  onChanged()
+                  try {
+                    const n = await window.vault.archivePurge()
+                    onStatus(t('toast.purged', { count: n }))
+                    onChanged()
+                  } catch {
+                    onStatus(t('toast.purge.backupFailed'))
+                  }
+                  setBackupsVersion((v) => v + 1)
                   await load()
                 }}
               >
-                {confirmPurge ? t('settings.archive.purgeConfirm') : t('settings.archive.purge')}
+                {confirmPurge
+                  ? t(info.backupKeep > 0 ? 'settings.archive.purgeConfirmBackup' : 'settings.archive.purgeConfirm')
+                  : t('settings.archive.purge')}
               </button>
             )}
           </div>
           {info.archiveMode === 'mirror' && <p className="alert tone-amber">{t('settings.archive.mirrorNote')}</p>}
         </Section>
+
+        <BackupSection onStatus={onStatus} refreshKey={backupsVersion} />
 
         <Section title={t('settings.update.title')} desc={t('settings.update.help')}>
           <div className="flex flex-wrap items-center gap-3">
