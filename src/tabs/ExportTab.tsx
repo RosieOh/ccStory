@@ -1,5 +1,4 @@
 import { useT } from '../i18n'
-import { GHOST_BTN } from '../ui'
 
 /** Export of messages selected in Search: build Markdown/CSV, then copy it or save it to a file. */
 export function ExportTab({
@@ -35,66 +34,68 @@ export function ExportTab({
   }
 
   return (
-    <div className="flex h-full flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-400">
-        <span className="font-mono text-[11px] text-zinc-300">{t('export.selected', { count: selectedCount })}</span>
+    <div className="page page-fill">
+      <section className="glass panel flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
+        <div className="flex items-baseline gap-2">
+          <span className="stat-value !text-[30px]">{selectedCount.toLocaleString()}</span>
+          <span className="text-[13.5px] text-ink-3">{t('export.selectedLabel')}</span>
+        </div>
         {selectedCount > 0 && (
-          <button type="button" className={GHOST_BTN} onClick={onClearSelection}>
+          <button type="button" className="btn btn-tertiary btn-xs" onClick={onClearSelection}>
             {t('search.clearSelection')}
           </button>
         )}
-        <label className="flex cursor-pointer items-center gap-2">
-          <input type="checkbox" checked={excludeMeta} onChange={(e) => onExcludeMeta(e.target.checked)} />
+        <label className="flex cursor-pointer items-center gap-2 text-[13.5px] text-ink-2">
+          <input type="checkbox" className="check" checked={excludeMeta} onChange={(e) => onExcludeMeta(e.target.checked)} />
           {t('export.excludeMeta')}
         </label>
-        <label className="flex cursor-pointer items-center gap-2">
-          <input type="checkbox" checked={excludeSubagents} onChange={(e) => onExcludeSubagents(e.target.checked)} />
+        <label className="flex cursor-pointer items-center gap-2 text-[13.5px] text-ink-2">
+          <input
+            type="checkbox"
+            className="check"
+            checked={excludeSubagents}
+            onChange={(e) => onExcludeSubagents(e.target.checked)}
+          />
           {t('export.excludeSubagents')}
         </label>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-brand-fg hover:bg-brand-hover disabled:opacity-40"
-          disabled={!selectedCount}
-          onClick={() => onExport('md')}
-        >
-          {t('export.markdown')}
-        </button>
-        <button
-          type="button"
-          className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 disabled:opacity-40"
-          disabled={!selectedCount}
-          onClick={() => onExport('csv')}
-        >
-          {t('export.csv')}
-        </button>
-        <button
-          type="button"
-          className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 disabled:opacity-40"
-          disabled={!exportText}
-          onClick={() => {
-            void window.vault.copyText(exportText)
-            onStatus(t('toast.copied'))
-          }}
-        >
-          {t('export.copyResult')}
-        </button>
-        <button
-          type="button"
-          className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 disabled:opacity-40"
-          disabled={!exportText}
-          onClick={() => void save()}
-        >
-          {t('export.save')}
-        </button>
-      </div>
-      <textarea
-        readOnly
-        className="min-h-0 flex-1 resize-none rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-200"
-        value={exportText}
-        placeholder={t('export.placeholder')}
-      />
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button type="button" className="btn btn-primary" disabled={!selectedCount} onClick={() => onExport('md')}>
+            {t('export.markdown')}
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={!selectedCount} onClick={() => onExport('csv')}>
+            {t('export.csv')}
+          </button>
+        </div>
+      </section>
+
+      <section className="glass panel flex min-h-0 flex-1 flex-col gap-3 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="section-title">{t('export.result')}</h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="btn btn-tertiary"
+              disabled={!exportText}
+              onClick={() => {
+                void window.vault.copyText(exportText)
+                onStatus(t('toast.copied'))
+              }}
+            >
+              {t('export.copyResult')}
+            </button>
+            <button type="button" className="btn btn-tertiary" disabled={!exportText} onClick={() => void save()}>
+              {t('export.save')}
+            </button>
+          </div>
+        </div>
+        <textarea
+          readOnly
+          className="input mono min-h-[12rem] flex-1 resize-none !p-3 leading-relaxed"
+          value={exportText}
+          placeholder={t('export.placeholder')}
+          aria-label={t('export.result')}
+        />
+      </section>
     </div>
   )
 }
