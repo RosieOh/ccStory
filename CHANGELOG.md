@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### First-release readiness (v0.6.0)
 
+- Stats: **Days you opened Vault**. It shows the last four weeks against the roadmap's
+  go/no-go bar (opened on ≥3 days a week). The roadmap used to point at prompts per day,
+  which measures Claude Code, not Vault. Only local dates are stored (`app_opens`, one
+  row per day, on launch or focus), and nothing is sent.
 - App icon: the brand mark (vault glyph on the brand gradient) on the macOS icon grid.
   `build/icon.svg` is the source, and `scripts/build-icons.sh` regenerates the `.icns`,
   the `.ico` (each size rendered from the SVG, full-bleed) and the `.png`. The installers
