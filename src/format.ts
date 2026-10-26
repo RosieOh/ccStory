@@ -18,10 +18,15 @@ export function formatTs(ms: number | null | undefined, locale: Locale): string 
   return new Date(ms).toLocaleString(BCP47[locale])
 }
 
-/** 1_234_567 → "1.2M", 12_300 → "12.3K" — compact token counts for stat tiles. */
+/** 1_234_567 → "1.2M", 12_300 → "12.3K", 27_650_000_000 → "27.7B" — compact counts for tiles. */
 export function formatCompact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  const units: [number, string][] = [
+    [1e12, 'T'],
+    [1e9, 'B'],
+    [1e6, 'M'],
+    [1e3, 'K'],
+  ]
+  for (const [v, u] of units) if (Math.abs(n) >= v) return `${(n / v).toFixed(1)}${u}`
   return String(n)
 }
 
