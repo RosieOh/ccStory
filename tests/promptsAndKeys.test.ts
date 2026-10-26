@@ -48,7 +48,10 @@ describe('non-conversation lines', () => {
         hash: 'h',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: 'internal side request' }],
+          content: [
+            { type: 'text', text: 'internal side request' },
+            { type: 'tool_use', name: 'Edit', input: { file_path: '/repo/src/a.ts' } },
+          ],
           usage: { input_tokens: 999 },
         },
       }),
@@ -56,8 +59,9 @@ describe('non-conversation lines', () => {
     expect(p.messageClass).toBe('meta')
     expect(p.role).toBe('unknown')
     expect(p.text.startsWith('[api-request-blob]')).toBe(true)
-    // A copy of a request must never count as billable usage.
+    // A copy of a request must never count as billable usage or as a file touch.
     expect(p.usage).toBeNull()
+    expect(p.filePaths).toEqual([])
     expect(p.isPrompt).toBe(false)
   })
 
@@ -79,6 +83,13 @@ describe('human prompts', () => {
     const p = parseJsonlLine(userLine('Fix the login bug'))!
     expect(p.isPrompt).toBe(true)
     expect(p.promptText).toBe('Fix the login bug')
+  })
+
+  it('trusts turnOrigin: notifications and peer messages are not the human', () => {
+    expect(parseJsonlLine(userLine('looks typed', { turnOrigin: 'task_notification' }))!.isPrompt).toBe(false)
+    expect(parseJsonlLine(userLine('looks typed', { turnOrigin: 'peer' }))!.isPrompt).toBe(false)
+    expect(parseJsonlLine(userLine('my answer', { turnOrigin: 'sdk' }))!.isPrompt).toBe(true)
+    expect(parseJsonlLine(userLine('typed', { turnOrigin: 'human' }))!.isPrompt).toBe(true)
   })
 
   it('never treats tool results or subagent prompts as the user', () => {
