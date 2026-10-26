@@ -3,7 +3,7 @@
 **Claude Vault** is a local-first desktop app that indexes your [Claude Code](https://www.anthropic.com/claude-code) conversation history, keeps it even after Claude Code deletes old transcripts, makes it searchable (SQLite **FTS5**), and helps you **reuse** your own prompts.
 
 - **OS:** macOS first (Electron); `electron-builder` also targets Windows (NSIS) and Linux (AppImage/deb). Path logic works cross-platform; Windows/Linux are less battle-tested.
-- **Privacy:** Claude's files are read-only — the app never writes under `~/.claude/`. The index and its backups live in a local SQLite DB under your user data directory. The only network request is an update check against GitHub Releases, which sends no conversation data and can be turned off in **Settings** ([ADR-0005](docs/decisions/0005-update-check-network-exception.md)).
+- **Privacy:** Claude's files are read-only — the app never writes under `~/.claude/`. The index and its backups live in a local SQLite DB under your user data directory. To measure its own usefulness, Vault records the *dates* you opened it (no times, no content) in that DB for the Stats tab; nothing leaves the machine. The only network request is an update check against GitHub Releases, which sends no conversation data and can be turned off in **Settings** ([ADR-0005](docs/decisions/0005-update-check-network-exception.md)).
 - **License:** MIT — see [LICENSE](LICENSE).
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
@@ -27,6 +27,7 @@
 | Session transcript modal (markdown, meta/tool toggles, archived banner) | Yes |
 | Prompt templates with `{{variables}}` | Yes |
 | Command palette (⌘/Ctrl+K), keyboard result navigation | Yes |
+| Stats: days you opened Vault per week (the roadmap's go/no-go measure) | Yes |
 | Usage stats per model, counted **once per API response**; cost estimate with 5-minute / 1-hour cache writes and an editable, dated price table | Yes |
 | Export Markdown / CSV — copy or save to a file | Yes |
 | **Backups**: daily DB snapshots plus one before upgrades, purges and restores; restore in Settings; a DB that won't open is recovered from the newest backup | Yes (keeps 3) |
