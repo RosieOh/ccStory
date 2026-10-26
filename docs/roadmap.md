@@ -20,7 +20,7 @@ file and stats accuracy; v0.5.0 brings the UI in line with the owner's other too
 
 ### First-release checklist (whichever distribution path is chosen)
 
-- [ ] App icons in `build/` (`icon.icns`, `icon.ico`, `icon.png`) — the installer ships Electron's default icon today.
+- [x] App icons in `build/` (`icon.icns`, `icon.ico`, `icon.png`, generated from `icon.svg`).
 - [ ] Version bump + tag (`npm version minor`) — triggers `.github/workflows/release.yml`.
 - [ ] Release notes from CHANGELOG `[Unreleased]`.
 - [ ] Signing secrets (only on the public path, see below).
