@@ -6,6 +6,13 @@ All notable changes to this project are documented in this file.
 
 ### First-release readiness (v0.6.0)
 
+- CI runs the unit and DB tests on macOS, Windows and Linux (typecheck, lint and the
+  bundle build once).
+- Release dry run: `gh workflow run release.yml -f publish=never` builds the installers
+  on all three OSes without creating a Release or uploading artifacts. Manual runs
+  default to it.
+- Dependabot waits 30 days before proposing a new major and 7 days for the rest. It had
+  opened Electron 45.0.0 the moment it was configured.
 - `npm run test:e2e`: an end-to-end smoke test that launches the built app against
   fixture transcripts and drives it with Playwright (13 steps, ~5 s). The steps cover
   startup, indexing, UI search, prompts, stats (one count per API response), plans,
