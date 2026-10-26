@@ -15,11 +15,13 @@ export function StatsTab({ stats }: { stats: StatsPayload | null }) {
                 <div className="grid gap-6 md:grid-cols-2">
                   <section className="md:col-span-2">
                     <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.summary')}</h3>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                       {(
                         [
-                          [t('stats.projects'), stats.totalProjects],
+                          [t('stats.prompts'), stats.totalPrompts],
                           [t('stats.sessions'), stats.totalSessions],
+                          [t('stats.archived'), stats.archivedSessions],
+                          [t('stats.projects'), stats.totalProjects],
                           [t('stats.messages'), stats.totalMessages],
                         ] as const
                       ).map(([label, value]) => (
@@ -216,6 +218,7 @@ function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
             output: m.output,
             cacheRead: m.cacheRead,
             cacheCreation: m.cacheCreation,
+            cacheCreation1h: m.cacheCreation1h,
           },
           prices,
         ),
@@ -224,7 +227,8 @@ function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
   }, [byModel, prices])
 
   const priced = rows.filter((r) => r.cost != null)
-  const unpriced = rows.length - priced.length
+  const unpricedModels = rows.filter((r) => r.cost == null).map((r) => r.model)
+  const unpriced = unpricedModels.length
   const total = priced.reduce((sum, r) => sum + (r.cost ?? 0), 0)
   const max = Math.max(1e-9, ...priced.map((r) => r.cost ?? 0))
 
@@ -292,6 +296,11 @@ function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
           ))}
         </div>
 
+        {unpriced > 0 && (
+          <p className="mt-3 break-words font-mono text-[11px] text-amber-700">
+            {t('cost.unpriced.models', { models: unpricedModels.join(', ') })}
+          </p>
+        )}
         <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">{t('cost.disclaimer')}</p>
       </div>
 
@@ -302,14 +311,15 @@ function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
             {t('cost.prices.note', { date: PRICES_AS_OF })}
           </p>
           <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-[11px]">
+            <table className="w-full min-w-[620px] text-[11px]">
               <thead>
                 <tr className="text-left text-zinc-600">
                   <th className="py-1 pr-2 font-medium">{t('cost.prices.model')}</th>
                   <th className="py-1 pr-2 font-medium">{t('cost.prices.input')}</th>
                   <th className="py-1 pr-2 font-medium">{t('cost.prices.output')}</th>
                   <th className="py-1 pr-2 font-medium">{t('cost.prices.cacheRead')}</th>
-                  <th className="py-1 font-medium">{t('cost.prices.cacheWrite')}</th>
+                  <th className="py-1 pr-2 font-medium">{t('cost.prices.cacheWrite')}</th>
+                  <th className="py-1 font-medium">{t('cost.prices.cacheWrite1h')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,6 +332,7 @@ function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
                         'outputPerMTok',
                         'cacheReadPerMTok',
                         'cacheWritePerMTok',
+                        'cacheWrite1hPerMTok',
                       ] as const
                     ).map((field) => (
                       <td key={field} className="py-1 pr-2">
@@ -360,6 +371,7 @@ function CostPanel({ byModel }: { byModel: ModelTokenRow[] }) {
                     outputPerMTok: 0,
                     cacheReadPerMTok: 0,
                     cacheWritePerMTok: 0,
+                    cacheWrite1hPerMTok: 0,
                   },
                 ])
                 setNewModel('')
