@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file.
 
 ### First-release readiness (v0.6.0)
 
+- Cost: the OpenAI models Codex CLI uses are priced (standard tier, ≤272K-token prompts,
+  from developers.openai.com as of 2026-10-27, shown next to the Claude table date).
+  Cached input has its own rate, and cache writes use the 30-minute rate where one is
+  published. Every model that extends a priced name is listed too: prefix matching would
+  otherwise price `gpt-5.5-pro` as `gpt-5.5`. `PRICES_SEED_VERSION` 3 adds them once
+  without touching edits. `codex-auto-review` has no published price and stays unpriced.
 - Plans follow archive mode (schema v10, `plan_files.archived_at`, added in place).
   In Keep mode a deleted plan stays searchable, badged "보관됨"; in Mirror mode it is
   deleted as before. "Delete all archived" includes plans, and Settings counts both.
