@@ -14,11 +14,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
-      # Skip native build scripts (better-sqlite3 / electron-builder deps):
-      # typecheck, unit tests and the renderer build do not load the native module.
+      # No install scripts needed: better-sqlite3 ships N-API prebuilds that load in
+      # Node and Electron alike, and nothing here launches Electron.
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
@@ -34,12 +34,8 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # The SQLite integration tests need the native module; build it for this
-      # Node (prebuilt binary) — the app itself uses the Electron build.
       - name: DB integration tests
-        run: |
-          npm rebuild better-sqlite3
-          npm run test:db
+        run: npm run test:db
 
       - name: Renderer build
         run: npx vite build
