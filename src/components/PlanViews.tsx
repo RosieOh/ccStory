@@ -61,7 +61,7 @@ export function PlanSearchHitCard({
           }`}
         >
           <button type="button" className={GHOST_BTN} onClick={() => void copyFull()}>
-            복사
+            {t('action.copy')}
           </button>
           <button type="button" className={GHOST_BTN} onClick={() => void toggle()}>
             {expanded ? t('action.collapse') : t('action.body')}
@@ -159,7 +159,7 @@ export function PlanMarkdownModal({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {err && <p className="text-sm text-red-400">{err}</p>}
-          {!err && !body && <p className="text-sm text-zinc-500">불러오는 중…</p>}
+          {!err && !body && <p className="text-sm text-zinc-500">{t('common.loading')}</p>}
           {!err && body ? <Markdown>{body}</Markdown> : null}
         </div>
       </div>

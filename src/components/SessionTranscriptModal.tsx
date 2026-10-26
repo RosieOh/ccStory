@@ -75,6 +75,7 @@ export function SessionTranscriptModal({
   const [showMeta, setShowMeta] = useState(false)
   const [showMarkdown, setShowMarkdown] = useState(true)
   const [showToolResults, setShowToolResults] = useState(false)
+  const [archived, setArchived] = useState(false)
   const highlightRef = useRef<HTMLDivElement | null>(null)
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
 
@@ -128,6 +129,10 @@ export function SessionTranscriptModal({
     setRows([])
     setLoadErr('')
     setShowMeta(false)
+    setArchived(false)
+    void window.vault.sessionInfo(open.sessionId).then((info) => {
+      if (!cancelled) setArchived(info?.archivedAt != null)
+    })
     void window.vault.sessionTranscript(open.sessionId).then(
       (r) => {
         if (!cancelled) setRows(r)
@@ -186,6 +191,11 @@ export function SessionTranscriptModal({
             <p className="mt-1 text-xs text-zinc-500">
               {t('transcript.hint')}
             </p>
+            {archived && (
+              <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700">
+                {t('transcript.archived')}
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
                 <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} />
@@ -229,7 +239,7 @@ export function SessionTranscriptModal({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {loadErr && <p className="text-sm text-red-400">{loadErr}</p>}
-          {!loadErr && rows.length === 0 && <p className="text-sm text-zinc-500">불러오는 중…</p>}
+          {!loadErr && rows.length === 0 && <p className="text-sm text-zinc-500">{t('common.loading')}</p>}
           {(() => {
             const hiddenMeta = showMeta ? 0 : rows.filter((m) => m.messageClass === 'meta').length
             const hiddenTools = showToolResults ? 0 : toolRowCount
@@ -263,7 +273,7 @@ export function SessionTranscriptModal({
                           isUser ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-300'
                         }`}
                       >
-                        {isUser ? '나' : 'Claude'}
+                        {isUser ? t('role.me') : t('role.assistant')}
                       </span>
                     ) : null}
                     <span className="font-mono text-zinc-400">#{m.lineIndex}</span>
@@ -276,7 +286,7 @@ export function SessionTranscriptModal({
                       className="ml-auto text-sky-400 hover:underline"
                       onClick={() => void window.vault.copyText(m.body)}
                     >
-                      복사
+                      {t('action.copy')}
                     </button>
                   </div>
                   <TranscriptBody

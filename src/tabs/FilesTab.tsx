@@ -132,7 +132,13 @@ export function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen)
                       row.role === 'user' ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-500'
                     }`}
                   >
-                    {row.role === 'user' ? 'me' : row.role === 'assistant' ? 'ai' : row.role}
+                    {row.role === 'user'
+                      ? t('role.badge.user')
+                      : row.role === 'assistant'
+                        ? t('role.badge.assistant')
+                        : row.role === 'tool'
+                          ? t('role.badge.tool')
+                          : row.role}
                   </span>
                   <span className="truncate font-sans font-medium text-zinc-300">
                     {sidebarPrimaryLabel(row.projectName)}
