@@ -7,13 +7,14 @@ were development batches. v0.4.0 fixes the problems a real-corpus audit found �
 favorites, a frozen window during active sessions, ~2× inflated token counts, no
 pricing for current models, and the app discarding history Claude Code deletes — and
 adds the prompts view, tag filtering, archive mode and Settings; v0.4.1 tightens prompt,
-file and stats accuracy. See [CHANGELOG.md](../CHANGELOG.md).
+file and stats accuracy; v0.5.0 brings the UI in line with the owner's other tools
+(ADR-0009). See [CHANGELOG.md](../CHANGELOG.md).
 
 | Phase | Goal | State |
 |-------|------|-------|
 | v0.4.0 — trust | Data that never silently disappears; numbers that are right; a window that never freezes | Done, needs owner dogfooding |
 | v0.4.1 — accuracy | Prompt detection, file history and stats follow-ups found while measuring | Done |
-| v0.5.0 — glass UI | One visual language with the owner's other tools; AA contrast in both themes | Planned |
+| v0.5.0 — glass UI | One visual language with the owner's other tools; AA contrast in both themes | Done |
 | First release (v0.6.0) | A build other people can install | Blocked on the distribution decision below |
 | Later | Only what dogfooding or real users ask for | — |
 
