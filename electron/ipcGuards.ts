@@ -1,5 +1,5 @@
 import type { ModelPrice } from '../shared/pricing.js'
-import type { ExportOptions, SearchFilters } from '../shared/ipc.js'
+import type { ExportOptions, PromptQuery, SearchFilters, Settings } from '../shared/ipc.js'
 
 const MAX_SEARCH_LIMIT = 200
 const MAX_EXPORT_MESSAGE_IDS = 5000
@@ -33,6 +33,8 @@ export function sanitizeSearchFilters(raw: unknown): SearchFilters {
   const limit = clampInt(o.limit, 1, MAX_SEARCH_LIMIT, DEFAULT_SEARCH_LIMIT)
   const excludeMeta = o.excludeMeta === false ? false : true
   const excludeSubagents = o.excludeSubagents === true
+  const excludeTools = o.excludeTools === true
+  const tagId = positiveIntOrNull(o.tagId)
   const scopeRaw = o.scope
   const scope =
     scopeRaw === 'messages' || scopeRaw === 'plans' || scopeRaw === 'all' ? scopeRaw : undefined
@@ -52,8 +54,10 @@ export function sanitizeSearchFilters(raw: unknown): SearchFilters {
     limit,
     excludeMeta,
     excludeSubagents,
+    excludeTools,
   }
   if (projectId != null) out.projectId = projectId
+  if (tagId != null) out.tagId = tagId
   if (role) out.role = role as 'user' | 'assistant'
   if (scope) out.scope = scope
   if (matchMode) out.matchMode = matchMode
@@ -92,6 +96,55 @@ export function sanitizePlanId(raw: unknown): number | null {
 
 export function sanitizeMessageId(raw: unknown): number | null {
   return positiveIntOrNull(raw)
+}
+
+/** Stable message keys are uuids or `file#line`; bound the length, nothing else is assumed. */
+export function sanitizeMsgKey(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const k = raw.trim()
+  return k && k.length <= 2000 ? k : null
+}
+
+export function sanitizeTagName(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .slice(0, 200)
+}
+
+/** Tag colors are only ever rendered as CSS; accept `#rgb`/`#rrggbb` or nothing. */
+export function sanitizeTagColor(raw: unknown): string | null {
+  return typeof raw === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(raw) ? raw : null
+}
+
+export function sanitizePromptQuery(raw: unknown): PromptQuery {
+  const o = isPlainObject(raw) ? raw : {}
+  const out: PromptQuery = {
+    query: typeof o.query === 'string' ? o.query.slice(0, 500) : '',
+    sort: o.sort === 'frequent' ? 'frequent' : 'recent',
+    limit: clampInt(o.limit, 1, 500, 200),
+  }
+  const projectId = positiveIntOrNull(o.projectId)
+  if (projectId != null) out.projectId = projectId
+  return out
+}
+
+export function sanitizeSettingsPatch(raw: unknown): Partial<Settings> {
+  const o = isPlainObject(raw) ? raw : {}
+  const out: Partial<Settings> = {}
+  if (o.archiveMode === 'keep' || o.archiveMode === 'mirror') out.archiveMode = o.archiveMode
+  if (typeof o.autoUpdate === 'boolean') out.autoUpdate = o.autoUpdate
+  return out
+}
+
+/** Clipboard text is truncated rather than rejected so a huge copy still does something. */
+export function sanitizeClipboardText(raw: unknown): string {
+  const s = String(raw ?? '')
+  const max = 5_000_000
+  return s.length > max ? `${s.slice(0, max)}\n…(truncated)` : s
+}
+
+export function sanitizeExportFormat(raw: unknown): 'md' | 'csv' {
+  return raw === 'csv' ? 'csv' : 'md'
 }
 
 export function sanitizeFileQuery(raw: unknown): string {
@@ -153,6 +206,7 @@ export function sanitizePrices(raw: unknown): ModelPrice[] {
       outputPerMTok: rate(r.outputPerMTok),
       cacheReadPerMTok: rate(r.cacheReadPerMTok),
       cacheWritePerMTok: rate(r.cacheWritePerMTok),
+      cacheWrite1hPerMTok: rate(r.cacheWrite1hPerMTok ?? Number(r.inputPerMTok) * 2),
     })
   }
   return out
