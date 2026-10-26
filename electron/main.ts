@@ -1,35 +1,65 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
-import chokidar from 'chokidar'
-import { openVaultDb } from './db.js'
-import { defaultClaudePlansRoot, defaultClaudeProjectsRoot } from './claudeRoots.js'
-import { indexAdapterProject, indexSinglePath, pruneMissingProjectsAndSessions } from './indexer.js'
-import { getAvailableAdapters } from './adapters.js'
-import { fullReindexPlans, indexPlanSinglePath, isPathUnderPlansRoot } from './plansIndexer.js'
-import { unifiedSearch } from './search.js'
-import { checkForUpdates, getUpdateStatus, initAutoUpdate, installUpdate } from './updater.js'
-import { fileTimeline, listFiles } from './files.js'
+import chokidar, { type FSWatcher } from 'chokidar'
+import { getSetting, openVaultDb, setSetting } from './db.js'
+import { claudeHomeDir, defaultClaudePlansRoot } from './claudeRoots.js'
+import { allAdapters } from './adapters.js'
+import { archiveModeOf } from './indexer.js'
+import { IndexService } from './indexService.js'
+import { QueryService } from './queryService.js'
+import { checkForUpdates, getUpdateStatus, initAutoUpdate, installUpdate, setAutoUpdateEnabled } from './updater.js'
 import { listPrices, resetPrices, savePrices } from './prices.js'
-import { computeStats } from './stats.js'
+import { EMPTY_STATS } from './stats.js'
+import {
+  addFavorite,
+  createTag,
+  deleteTag,
+  listFavorites,
+  listProjects,
+  listTags,
+  messageBody,
+  purgeArchived,
+  recentSessions,
+  removeFavorite,
+  renameTag,
+  sessionInfo,
+  setMessageTags,
+} from './queries.js'
 import { IPC } from '../shared/ipc.js'
 import type {
+  ExportSaveResult,
+  FileRow,
+  FileTouchRow,
   IndexProgress,
   PlanListRow,
-  RecentSessionRow,
+  PromptRow,
+  ReindexResult,
   SessionMessageRow,
+  Settings,
+  SettingsInfo,
+  StatsPayload,
   TemplateRow,
+  UnifiedSearchHit,
 } from '../shared/ipc.js'
+import type { WatchEventKind } from './workerProtocol.js'
 import {
+  sanitizeClipboardText,
+  sanitizeExportFormat,
   sanitizeExportMessageIds,
   sanitizeFilePath,
   sanitizeFileQuery,
   sanitizeExportOptions,
   sanitizeMessageId,
+  sanitizeMsgKey,
   sanitizePlanId,
+  sanitizePromptQuery,
   sanitizeSearchFilters,
   sanitizeSessionId,
+  sanitizeSettingsPatch,
+  sanitizeTagColor,
   sanitizeTagIds,
+  sanitizeTagName,
   sanitizeTemplateBody,
   sanitizeTemplateId,
   sanitizePrices,
@@ -40,9 +70,14 @@ import {
 // __dirname is provided by Node's module wrapper — no import.meta.url shim needed.
 declare const __dirname: string
 
+// Test/dev override: keep the vault DB somewhere disposable instead of the real profile.
+const userDataOverride = process.env.VAULT_USER_DATA?.trim()
+if (userDataOverride && path.isAbsolute(userDataOverride)) app.setPath('userData', userDataOverride)
+
 let mainWindow: BrowserWindow | null = null
 let db: ReturnType<typeof openVaultDb> | null = null
-let claudeRoot = ''
+let indexService: IndexService | null = null
+let queryService: QueryService | null = null
 let plansRoot = ''
 
 function vaultDbPath(): string {
@@ -55,33 +90,6 @@ function broadcastIndexUpdated() {
 
 function broadcastIndexProgress(p: IndexProgress) {
   mainWindow?.webContents.send(IPC.onIndexProgress, p)
-}
-
-const nextTick = () => new Promise<void>((resolve) => setImmediate(resolve))
-
-/**
- * Index projects one directory per macrotask so the window paints first and the
- * event loop keeps flushing progress events instead of freezing on a big sync scan.
- */
-async function runInitialIndex() {
-  if (!db) return
-  const jobs = getAvailableAdapters().flatMap((adapter) =>
-    adapter.listProjects().map((project) => ({ adapter, project })),
-  )
-  const total = jobs.length
-  for (let i = 0; i < jobs.length; i += 1) {
-    indexAdapterProject(db, jobs[i].adapter, jobs[i].project)
-    broadcastIndexProgress({ phase: 'projects', current: i + 1, total, label: jobs[i].project.displayName })
-    broadcastIndexUpdated()
-    await nextTick()
-  }
-  pruneMissingProjectsAndSessions(db)
-  broadcastIndexProgress({ phase: 'plans', current: 0, total: 1 })
-  await nextTick()
-  fullReindexPlans(db, plansRoot)
-  broadcastIndexProgress({ phase: 'done', current: total, total })
-  broadcastIndexUpdated()
-  startWatcher()
 }
 
 /**
@@ -151,43 +159,36 @@ function createWindow() {
   }
 }
 
-function registerIpc() {
-  ipcMain.handle(IPC.projectsList, async () => {
-    if (!db) return []
-    const rows = db
-      .prepare(
-        `SELECT p.id, p.slug, p.display_name AS displayName, p.root_path AS path, p.tool AS tool,
-                COUNT(DISTINCT s.id) AS sessionCount,
-                MAX(s.file_mtime_ms) AS lastModified
-         FROM projects p
-         LEFT JOIN sessions s ON s.project_id = p.id
-         GROUP BY p.id
-         ORDER BY (lastModified IS NULL) ASC, lastModified DESC, p.slug`,
-      )
-      .all() as {
-        id: number
-        slug: string
-        displayName: string
-        path: string
-        tool: string
-        sessionCount: number
-        lastModified: number | null
-      }[]
-    return rows.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      displayName: r.displayName,
-      path: r.path,
-      tool: r.tool ?? 'claude',
-      sessionCount: r.sessionCount,
-      lastModified: r.lastModified,
-    }))
-  })
+function readSettings(): Settings {
+  return {
+    archiveMode: db ? archiveModeOf(db) : 'keep',
+    autoUpdate: db ? getSetting(db, 'autoUpdate') !== 'off' : true,
+  }
+}
 
-  ipcMain.handle(IPC.search, async (_e, raw: unknown) => {
-    if (!db) return []
-    return unifiedSearch(db, sanitizeSearchFilters(raw))
-  })
+function fileSize(p: string): number {
+  try {
+    return fs.statSync(p).size
+  } catch {
+    return 0
+  }
+}
+
+/** Never write under ~/.claude — not even an export the user points there by accident. */
+function isInsideClaudeHome(target: string): boolean {
+  const rel = path.relative(claudeHomeDir(), path.resolve(target))
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
+function registerIpc() {
+  const query = <T>(method: string, ...args: unknown[]) => queryService!.call<T>(method, ...args)
+
+  ipcMain.handle(IPC.projectsList, async () => (db ? listProjects(db) : []))
+
+  // `null` = superseded by a newer search while waiting (see QueryService.search).
+  ipcMain.handle(IPC.search, async (_e, raw: unknown) =>
+    db ? queryService!.search<UnifiedSearchHit[]>(sanitizeSearchFilters(raw)) : [],
+  )
 
   ipcMain.handle(IPC.plansList, async () => {
     if (!db) return []
@@ -210,62 +211,28 @@ function registerIpc() {
   })
 
   ipcMain.handle(IPC.sessionTranscript, async (_e, raw: unknown) => {
-    if (!db) return []
     const sessionId = sanitizeSessionId(raw)
-    if (sessionId == null) return []
-    const rows = db
-      .prepare(
-        `SELECT m.id AS messageId, m.line_index AS lineIndex, m.role, m.body,
-                COALESCE(m.message_class, 'dialog') AS messageClass,
-                m.content_kinds AS contentKinds
-         FROM messages m
-         WHERE m.session_id = ?
-         ORDER BY m.line_index ASC
-         LIMIT 25000`,
-      )
-      .all(sessionId) as (Omit<SessionMessageRow, 'contentKinds'> & {
-        contentKinds: string | null
-      })[]
-    return rows.map((r): SessionMessageRow => {
-      let kinds: string[] = []
-      try {
-        const parsed = r.contentKinds ? JSON.parse(r.contentKinds) : []
-        if (Array.isArray(parsed)) kinds = parsed.filter((k): k is string => typeof k === 'string')
-      } catch {
-        /* stored value is not valid JSON — treat as no kinds */
-      }
-      return { ...r, contentKinds: kinds }
-    })
+    if (!db || sessionId == null) return []
+    return query<SessionMessageRow[]>('transcript', sessionId)
   })
 
-  ipcMain.handle(IPC.recentSessions, async (_e, projectId: number | null | undefined) => {
-    if (!db) return []
-    const pid = typeof projectId === 'number' && Number.isFinite(projectId) ? projectId : null
-    const baseSql = `SELECT s.id AS sessionId,
-                p.display_name AS projectName,
-                s.rel_path AS sessionFile,
-                s.file_mtime_ms AS mtime,
-                (SELECT substr(m2.body, 1, 140) FROM messages m2 WHERE m2.session_id = s.id ORDER BY m2.line_index ASC LIMIT 1) AS preview
-         FROM sessions s
-         JOIN projects p ON p.id = s.project_id`
-    if (pid != null) {
-      return db
-        .prepare(
-          `${baseSql}
-         WHERE p.id = ?
-         ORDER BY s.file_mtime_ms DESC
-         LIMIT 18`,
-        )
-        .all(pid) as RecentSessionRow[]
-    }
-    return db
-      .prepare(
-        `${baseSql}
-         ORDER BY s.file_mtime_ms DESC
-         LIMIT 18`,
-      )
-      .all() as RecentSessionRow[]
+  ipcMain.handle(IPC.sessionInfo, async (_e, raw: unknown) => {
+    const sessionId = sanitizeSessionId(raw)
+    return db && sessionId != null ? sessionInfo(db, sessionId) : null
   })
+
+  ipcMain.handle(IPC.messageBody, async (_e, raw: unknown) => {
+    const id = sanitizeMessageId(raw)
+    return db && id != null ? messageBody(db, id) : ''
+  })
+
+  ipcMain.handle(IPC.recentSessions, async (_e, raw: unknown) =>
+    db ? recentSessions(db, sanitizeSessionId(raw)) : [],
+  )
+
+  ipcMain.handle(IPC.promptsList, async (_e, raw: unknown) =>
+    db ? query<PromptRow[]>('prompts', sanitizePromptQuery(raw)) : [],
+  )
 
   ipcMain.handle(IPC.pricesList, async () => (db ? listPrices(db) : []))
 
@@ -318,134 +285,95 @@ function registerIpc() {
     db.prepare(`DELETE FROM templates WHERE id = ?`).run(id)
   })
 
-  ipcMain.handle(IPC.filesList, async (_e, raw: unknown) => {
-    if (!db) return []
-    return listFiles(db, sanitizeFileQuery(raw))
-  })
+  ipcMain.handle(IPC.filesList, async (_e, raw: unknown) =>
+    db ? query<FileRow[]>('filesList', sanitizeFileQuery(raw)) : [],
+  )
 
   ipcMain.handle(IPC.fileTimeline, async (_e, raw: unknown) => {
-    if (!db) return []
     const p = sanitizeFilePath(raw)
-    if (!p) return []
-    return fileTimeline(db, p)
+    if (!db || !p) return []
+    return query<FileTouchRow[]>('fileTimeline', p)
   })
 
   ipcMain.handle(IPC.updateStatus, async () => getUpdateStatus())
   ipcMain.handle(IPC.updateCheck, async () => checkForUpdates())
   ipcMain.handle(IPC.updateInstall, async () => installUpdate())
 
-  ipcMain.handle(IPC.reindex, async () => {
-    if (!db) return { projects: 0, sessions: 0, planFiles: 0 }
-    let projects = 0
-    let sessions = 0
-    for (const adapter of getAvailableAdapters()) {
-      for (const project of adapter.listProjects()) {
-        sessions += indexAdapterProject(db, adapter, project)
-        projects += 1
-      }
-    }
-    pruneMissingProjectsAndSessions(db)
-    const plansRes = fullReindexPlans(db, plansRoot)
-    broadcastIndexUpdated()
-    return { projects, sessions, planFiles: plansRes.planFiles }
+  ipcMain.handle(IPC.reindex, async (_e, rawReparse: unknown): Promise<ReindexResult> => {
+    if (!indexService) return { projects: 0, sessions: 0, planFiles: 0 }
+    return indexService.scan(rawReparse === true)
   })
 
-  ipcMain.handle(IPC.copyText, async (_e, text: string) => {
-    const s = String(text ?? '')
-    const max = 5_000_000
-    clipboard.writeText(s.length > max ? `${s.slice(0, max)}\n…(truncated)` : s)
+  ipcMain.handle(IPC.copyText, async (_e, raw: unknown) => {
+    clipboard.writeText(sanitizeClipboardText(raw))
   })
 
-  ipcMain.handle(IPC.favoritesList, async () => {
-    if (!db) return []
-    return db
-      .prepare(
-        `SELECT f.id, f.message_id AS messageId, s.id AS sessionId, m.body, m.role, p.slug AS projectSlug,
-                s.rel_path AS sessionFile, f.created_at AS createdAt
-         FROM favorites f
-         JOIN messages m ON m.id = f.message_id
-         JOIN sessions s ON s.id = m.session_id
-         JOIN projects p ON p.id = s.project_id
-         ORDER BY f.created_at DESC`,
-      )
-      .all()
-  })
+  ipcMain.handle(IPC.favoritesList, async () => (db ? listFavorites(db) : []))
 
   ipcMain.handle(IPC.favoriteAdd, async (_e, raw: unknown) => {
-    if (!db) return
     const messageId = sanitizeMessageId(raw)
-    if (messageId == null) return
-    db.prepare(`INSERT OR IGNORE INTO favorites (message_id, created_at) VALUES (?, ?)`).run(messageId, Date.now())
+    if (db && messageId != null) addFavorite(db, messageId)
   })
 
   ipcMain.handle(IPC.favoriteRemove, async (_e, raw: unknown) => {
-    if (!db) return
-    const messageId = sanitizeMessageId(raw)
-    if (messageId == null) return
-    db.prepare(`DELETE FROM favorites WHERE message_id = ?`).run(messageId)
+    const key = sanitizeMsgKey(raw)
+    if (db && key) removeFavorite(db, key)
   })
 
-  ipcMain.handle(IPC.tagsList, async () => {
-    if (!db) return []
-    return db.prepare(`SELECT id, name, color FROM tags ORDER BY name`).all()
+  ipcMain.handle(IPC.tagsList, async () => (db ? listTags(db) : []))
+
+  ipcMain.handle(IPC.tagCreate, async (_e, rawName: unknown, rawColor: unknown) => {
+    const name = sanitizeTagName(rawName)
+    if (!db || !name) return 0
+    return createTag(db, name, sanitizeTagColor(rawColor))
   })
 
-  ipcMain.handle(IPC.tagCreate, async (_e, name: string, color: string | null) => {
+  ipcMain.handle(IPC.tagRename, async (_e, rawId: unknown, rawName: unknown) => {
+    const id = sanitizeTemplateId(rawId)
+    const name = sanitizeTagName(rawName)
+    if (!db || id == null || !name) return false
+    return renameTag(db, id, name)
+  })
+
+  ipcMain.handle(IPC.tagDelete, async (_e, rawId: unknown) => {
+    const id = sanitizeTemplateId(rawId)
+    if (db && id != null) deleteTag(db, id)
+  })
+
+  ipcMain.handle(IPC.messageTagsSet, async (_e, rawKey: unknown, rawTagIds: unknown) => {
+    const key = sanitizeMsgKey(rawKey)
+    if (db && key) setMessageTags(db, key, sanitizeTagIds(rawTagIds))
+  })
+
+  ipcMain.handle(IPC.stats, async () => (db ? query<StatsPayload>('stats') : EMPTY_STATS))
+
+  ipcMain.handle(IPC.settingsGet, async (): Promise<SettingsInfo> => {
+    const dbPath = vaultDbPath()
+    return {
+      ...readSettings(),
+      dbPath,
+      dbSizeBytes: fileSize(dbPath) + fileSize(`${dbPath}-wal`),
+      claudeHome: claudeHomeDir(),
+    }
+  })
+
+  ipcMain.handle(IPC.settingsSet, async (_e, raw: unknown): Promise<Settings> => {
+    const patch = sanitizeSettingsPatch(raw)
+    if (db) {
+      if (patch.archiveMode) setSetting(db, 'archiveMode', patch.archiveMode)
+      if (patch.autoUpdate != null) {
+        setSetting(db, 'autoUpdate', patch.autoUpdate ? 'on' : 'off')
+        setAutoUpdateEnabled(patch.autoUpdate)
+      }
+    }
+    return readSettings()
+  })
+
+  ipcMain.handle(IPC.archivePurge, async () => {
     if (!db) return 0
-    const trimmed = String(name ?? '')
-      .trim()
-      .slice(0, 200)
-    if (!trimmed) return 0
-    try {
-      const r = db.prepare(`INSERT INTO tags (name, color) VALUES (?, ?)`).run(trimmed, color)
-      return Number(r.lastInsertRowid)
-    } catch {
-      const row = db.prepare(`SELECT id FROM tags WHERE name = ?`).get(trimmed) as { id: number }
-      return row?.id ?? 0
-    }
-  })
-
-  ipcMain.handle(IPC.messageTagsGet, async (_e, raw: unknown) => {
-    if (!db) return []
-    const messageId = sanitizeMessageId(raw)
-    if (messageId == null) return []
-    const rows = db
-      .prepare(`SELECT tag_id AS tagId FROM message_tags WHERE message_id = ?`)
-      .all(messageId) as { tagId: number }[]
-    return rows.map((r) => r.tagId)
-  })
-
-  ipcMain.handle(IPC.messageTagsSet, async (_e, rawMsg: unknown, rawTagIds: unknown) => {
-    if (!db) return
-    const database = db
-    const messageId = sanitizeMessageId(rawMsg)
-    if (messageId == null) return
-    const tagIds = sanitizeTagIds(rawTagIds)
-    const tx = database.transaction(() => {
-      database.prepare(`DELETE FROM message_tags WHERE message_id = ?`).run(messageId)
-      const ins = database.prepare(`INSERT OR IGNORE INTO message_tags (message_id, tag_id) VALUES (?, ?)`)
-      for (const tid of tagIds) {
-        ins.run(messageId, tid)
-      }
-    })
-    tx()
-  })
-
-  ipcMain.handle(IPC.stats, async () => {
-    if (!db) {
-      return {
-        totalProjects: 0,
-        totalSessions: 0,
-        totalMessages: 0,
-        messagesByRole: [],
-        topTokens: [],
-        activityByDay: [],
-        tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
-        tokensByModel: [],
-        activityFromTimestamps: false,
-      }
-    }
-    return computeStats(db)
+    const n = purgeArchived(db)
+    broadcastIndexUpdated()
+    return n
   })
 
   ipcMain.handle(
@@ -454,7 +382,7 @@ function registerIpc() {
     if (!db) return ''
     const messageIds = sanitizeExportMessageIds(rawIds)
     if (!messageIds.length) return ''
-    const fmt = format === 'csv' ? 'csv' : 'md'
+    const fmt = sanitizeExportFormat(format)
     const opts = sanitizeExportOptions(rawOpts)
     const placeholders = messageIds.map(() => '?').join(',')
     let rows = db
@@ -498,6 +426,28 @@ function registerIpc() {
     )
     return parts.join('\n---\n\n')
   })
+
+  ipcMain.handle(IPC.exportSave, async (_e, rawText: unknown, rawFormat: unknown): Promise<ExportSaveResult> => {
+    const text = String(rawText ?? '')
+    if (!text) return { saved: false }
+    const ext = sanitizeExportFormat(rawFormat)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const opts = {
+      defaultPath: path.join(app.getPath('documents'), `claude-vault-export-${stamp}.${ext}`),
+      filters: [ext === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Markdown', extensions: ['md'] }],
+    }
+    const res = mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts)
+    if (res.canceled || !res.filePath) return { saved: false }
+    if (isInsideClaudeHome(res.filePath)) {
+      return { saved: false, error: 'claude-home' }
+    }
+    try {
+      fs.writeFileSync(res.filePath, text, 'utf8')
+      return { saved: true, path: res.filePath }
+    } catch (err) {
+      return { saved: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
 }
 
 /**
@@ -534,39 +484,66 @@ function applyContentSecurityPolicy() {
   })
 }
 
+let watcher: FSWatcher | null = null
+
+/**
+ * Watch every source root (Claude projects, plans, other tools). chokidar v4 removed
+ * glob support, so roots are watched directly and filtered by extension. A root that
+ * does not exist yet (Claude Code not run yet, Codex not installed) is polled until it
+ * appears — the app never creates directories under ~/.claude itself.
+ */
 function startWatcher() {
-  // chokidar v4 removed glob support: watch the roots directly (recursive by default)
-  // and filter by extension in the dispatch handler. Skip heavy/irrelevant subtrees.
   const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__'])
-  const watcher = chokidar.watch([claudeRoot, plansRoot], {
+  const roots = [...new Set([...allAdapters().map((a) => a.root), plansRoot])]
+  watcher = chokidar.watch([], {
     ignoreInitial: true,
     ignored: (p: string) => p.split(/[\\/]/).some((seg) => IGNORE_DIRS.has(seg)),
     awaitWriteFinish: { stabilityThreshold: 400, pollInterval: 100 },
   })
 
-  const dispatch = (p: string, kind: 'add' | 'change' | 'unlink') => {
-    if (!db) return
+  // Claude Code appends to the active session constantly; batch events per flush.
+  const pending = new Map<string, WatchEventKind>()
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  const enqueue = (p: string, kind: WatchEventKind) => {
     const np = path.normalize(p)
-    if (isPathUnderPlansRoot(plansRoot, np) && np.toLowerCase().endsWith('.md')) {
-      if (kind === 'unlink') {
-        db.prepare(`DELETE FROM plan_files WHERE file_path = ?`).run(np)
-      } else {
-        indexPlanSinglePath(db, plansRoot, np)
-      }
-    } else if (np.toLowerCase().endsWith('.jsonl') && kind !== 'unlink') {
-      indexSinglePath(db, claudeRoot, np)
+    const lower = np.toLowerCase()
+    if (!lower.endsWith('.jsonl') && !lower.endsWith('.md')) return
+    pending.set(np, kind)
+    if (!flushTimer) {
+      flushTimer = setTimeout(() => {
+        flushTimer = null
+        const events = [...pending].map(([path, kind]) => ({ path, kind }))
+        pending.clear()
+        indexService?.notify(events)
+      }, 300)
     }
-    broadcastIndexUpdated()
   }
+  watcher.on('add', (p) => enqueue(p, 'add'))
+  watcher.on('change', (p) => enqueue(p, 'change'))
+  watcher.on('unlink', (p) => enqueue(p, 'unlink'))
 
-  watcher.on('add', (p) => dispatch(p, 'add'))
-  watcher.on('change', (p) => dispatch(p, 'change'))
-  watcher.on('unlink', (p) => dispatch(p, 'unlink'))
+  const waiting = new Set<string>()
+  for (const root of roots) {
+    if (fs.existsSync(root)) watcher.add(root)
+    else waiting.add(root)
+  }
+  if (waiting.size) {
+    const poll = setInterval(() => {
+      for (const root of [...waiting]) {
+        if (!fs.existsSync(root)) continue
+        waiting.delete(root)
+        watcher?.add(root)
+        void indexService?.scan().catch((err) => console.error('[vault] scan after root appeared failed', err))
+      }
+      if (!waiting.size) clearInterval(poll)
+    }, 30_000)
+  }
 }
 
 /**
- * The vault DB is a rebuildable cache of ~/.claude, so a corrupt or unreadable
- * file must never block startup: quarantine it and index again from scratch.
+ * The vault DB is mostly a rebuildable cache of ~/.claude, so a corrupt or unreadable
+ * file must never block startup: quarantine it (kept on disk, so user data can still
+ * be recovered by hand) and index again from scratch.
  */
 function openVaultDbResilient(): ReturnType<typeof openVaultDb> {
   const file = vaultDbPath()
@@ -635,24 +612,29 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
-    claudeRoot = defaultClaudeProjectsRoot()
     plansRoot = defaultClaudePlansRoot()
-    for (const dir of [claudeRoot, plansRoot]) {
-      try {
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-      } catch (err) {
-        console.error('[vault] cannot create data dir', dir, err)
-      }
-    }
     db = openVaultDbResilient()
+    const dbFile = vaultDbPath()
+    queryService = new QueryService(dbFile)
+    indexService = new IndexService({
+      dbFile,
+      plansRoot,
+      onProgress: broadcastIndexProgress,
+      onUpdated: broadcastIndexUpdated,
+      onError: (message) => reportFatal(MAIN_STRINGS[mainLocale()].initialIndex, message),
+    })
     registerIpc()
-    // Show the window first, then index in the background so a large ~/.claude
-    // does not delay first paint. The watcher starts once the initial pass finishes.
+    // Show the window first, then index on the worker so a large ~/.claude never
+    // delays first paint. The watcher starts once the initial pass finishes.
     createWindow()
     applyContentSecurityPolicy()
     mainWindow?.webContents.once('did-finish-load', () => {
-      void runInitialIndex().catch((err) => reportFatal(MAIN_STRINGS[mainLocale()].initialIndex, err))
-      if (mainWindow) initAutoUpdate(mainWindow)
+      indexService!.start()
+      void indexService!
+        .scan()
+        .then(() => startWatcher())
+        .catch((err) => reportFatal(MAIN_STRINGS[mainLocale()].initialIndex, err))
+      if (mainWindow) initAutoUpdate(mainWindow, readSettings().autoUpdate)
     })
   })
 }
@@ -665,10 +647,20 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
 })
 
-app.on('before-quit', () => {
-  try {
-    db?.close()
-  } catch {
-    /* closing a already-closed handle is fine */
-  }
+let shuttingDown = false
+app.on('before-quit', (event) => {
+  if (shuttingDown) return
+  // Let both workers close their DB handles cleanly before the process exits.
+  shuttingDown = true
+  event.preventDefault()
+  void (async () => {
+    try {
+      await watcher?.close()
+      await Promise.all([indexService?.stop(), queryService?.stop()])
+      db?.close()
+    } catch {
+      /* closing an already-closed handle is fine */
+    }
+    app.quit()
+  })()
 })
