@@ -214,7 +214,7 @@ export const ko = {
   'cost.editPrices': '가격표 편집',
   'cost.donePrices': '편집 완료',
   'cost.prices.title': '100만 토큰당 단가 (USD)',
-  'cost.prices.note': '가격은 바뀔 수 있어요. 기본값은 {date} 기준이고, 여기서 고친 값이 먼저 적용돼요.',
+  'cost.prices.note': '가격은 바뀔 수 있어요. 기본값은 Claude {date}, OpenAI {openaiDate} 기준이고, 여기서 고친 값이 먼저 적용돼요.',
   'cost.prices.model': '모델',
   'cost.prices.input': '입력',
   'cost.prices.output': '출력',
@@ -578,7 +578,7 @@ export const en: Messages = {
   'cost.donePrices': 'Done',
   'cost.prices.title': 'Price per million tokens (USD)',
   'cost.prices.note':
-    'Prices change. Defaults are as of {date}; anything you set here takes precedence.',
+    'Prices change. Defaults are as of {date} (Claude) and {openaiDate} (OpenAI); anything you set here takes precedence.',
   'cost.prices.model': 'Model',
   'cost.prices.input': 'Input',
   'cost.prices.output': 'Output',
