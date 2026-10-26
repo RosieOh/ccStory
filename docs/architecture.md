@@ -210,9 +210,13 @@ worker messages are typed in `electron/workerProtocol.ts`.
 
 ## Renderer layout
 
-`src/App.tsx` is the shell (navigation, search tab, inspector). Tabs live in `src/tabs/`
-(Prompts, Files, Favorites, Templates, Stats, Export, Settings), shared widgets in
-`src/components/` and `src/ui.tsx`, formatting helpers in `src/format.ts`.
+`src/App.tsx` is the shell (rail, page header, search screen and its filter panel).
+Screens live in `src/tabs/` (Prompts, Files, Favorites, Templates, Stats, Export,
+Settings), modals and the tag editor in `src/components/`, shell primitives (rail,
+header, project picker, toast, segmented control, icons) in `src/ui.tsx`, formatting
+helpers in `src/format.ts`. The visual system — tokens and glass component classes — is
+`src/index.css`, mapped into Tailwind by `tailwind.config.js` ([ADR-0009](decisions/0009-glass-visual-system.md)).
+`public/theme-init.js` sets the theme before first paint.
 
 ## Testing
 
