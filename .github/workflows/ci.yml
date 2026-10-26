@@ -34,5 +34,12 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # The SQLite integration tests need the native module; build it for this
+      # Node (prebuilt binary) — the app itself uses the Electron build.
+      - name: DB integration tests
+        run: |
+          npm rebuild better-sqlite3
+          npm run test:db
+
       - name: Renderer build
         run: npx vite build

@@ -48,6 +48,7 @@ jobs:
           npm run typecheck
           npm run lint
           npm test
+          npm run test:db
 
       - name: Build and publish
         run: npx electron-builder --${{ matrix.platform }} --publish always
