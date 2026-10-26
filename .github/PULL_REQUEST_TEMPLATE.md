@@ -18,6 +18,7 @@ Closes #
 - [ ] `npm run lint` 통과
 - [ ] `npm test` 통과
 - [ ] `npm run test:db` 통과 (색인·스키마·검색 SQL 변경 시)
+- [ ] `npx vite build && npm run test:e2e` 통과 (시작·워커·감시·화면 변경 시)
 - [ ] `~/.claude/` 아래에 쓰기 없음 (읽기 전용 색인, `mkdir` 포함)
 - [ ] 사용자 데이터(즐겨찾기·태그)가 행 id가 아닌 `msg_key`를 사용
 - [ ] 네트워크 호출 추가 없음 (텔레메트리 금지)
