@@ -5,7 +5,7 @@ import { readLines } from './lineReader.js'
 
 export type DbHandle = Database.Database
 
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
 
 /**
  * Opens the vault DB. Only the main process migrates (`migrate: true`, before the
@@ -149,7 +149,9 @@ const SCHEMA_SQL = `
     file_path TEXT NOT NULL UNIQUE,
     file_mtime_ms INTEGER NOT NULL,
     title TEXT NOT NULL,
-    body TEXT NOT NULL
+    body TEXT NOT NULL,
+    -- Set when the source file was deleted and archive mode is Keep (like sessions).
+    archived_at INTEGER
   );
 
   CREATE VIRTUAL TABLE IF NOT EXISTS plan_files_fts USING fts5(
@@ -273,6 +275,8 @@ function migrate(db: DbHandle) {
   // Superseded by the covering idx_messages_usage_cover (early v9 builds created it).
   db.exec(`DROP INDEX IF EXISTS idx_messages_usage`)
   db.exec(SCHEMA_SQL)
+  // v9 → v10: plans follow archive mode. Adding a nullable column needs no re-parse.
+  if (!columns(db, 'plan_files').has('archived_at')) db.exec(`ALTER TABLE plan_files ADD COLUMN archived_at INTEGER`)
   // From v9 on, a migration must never drop sessions/messages wholesale: archived
   // sessions exist only in this DB. Re-parse live files by resetting
   // `sessions.indexed_bytes` instead (see `requestFullReparse`).
