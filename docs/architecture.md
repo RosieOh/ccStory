@@ -247,8 +247,15 @@ helpers in `src/format.ts`. The visual system — tokens and glass component cla
 - `npm test` — unit tests (parser, Codex parser, search helpers, pricing, IPC guards).
 - `npm run test:db` — SQLite integration tests in `tests/db/` (append indexing, partial
   lines, re-read with favorites, archive vs mirror, missing-root guard, usage dedupe, FTS
-  integrity, prompts, v8 migration). `better-sqlite3` ships N-API prebuilds, so they run
-  under plain Node with the same binary the app loads in Electron.
+  integrity, prompts, v8 migration, backups). `better-sqlite3` ships N-API prebuilds, so
+  they run under plain Node with the same binary the app loads in Electron.
+- `npm run test:e2e` — `tests/e2e/smoke.mjs` launches the built app with Playwright
+  against a temporary copy of `tests/e2e/fixtures` (Claude sessions, a plan, a Codex
+  rollout; `CLAUDE_HOME` / `CODEX_HOME` / `VAULT_USER_DATA` point into it). It covers
+  startup, indexing, UI search, prompts, stats, plans, Codex, live append, archiving on
+  delete and the daily backup. It also checks that the renderer logs no errors, that the
+  app quits cleanly and that nothing was written under the transcript roots. CI runs it on
+  macOS, Windows and Linux (`xvfb-run`, `--no-sandbox`).
 
 ## Packaging
 

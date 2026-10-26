@@ -61,13 +61,14 @@ Other scripts:
 - `npm run typecheck` — main/preload/shared and the renderer.
 - `npm run lint` — ESLint (flat config).
 - `npm test` — unit tests (parsers, search helpers, pricing, IPC guards).
-- `npm run test:db` — SQLite integration tests (indexing, archive, migrations, search).
+- `npm run test:db` — SQLite integration tests (indexing, archive, migrations, search, backups).
+- `npm run test:e2e` — end-to-end smoke test: launches the built app (`npx vite build` first) against fixture transcripts and drives it with Playwright.
 - `npm run bench -- <vault.db>` — search latency on an existing index.
 - `npm run poc` — CLI scan of your transcripts with parser stats (no GUI, no DB).
 
 Environment overrides: `CLAUDE_HOME`, `CODEX_HOME` (absolute paths), `VAULT_USER_DATA` (put the vault DB somewhere disposable), `VAULT_DISABLE_UPDATER=1`.
 
-CI (GitHub Actions) runs typecheck, lint, unit tests, DB integration tests, and the renderer build on every push/PR.
+CI (GitHub Actions) runs typecheck, lint, unit tests, DB integration tests and the renderer build, plus the end-to-end smoke test on macOS, Windows and Linux, on every push/PR.
 
 ## Contributing
 

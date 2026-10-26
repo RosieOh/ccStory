@@ -24,7 +24,7 @@ npm run dev
 npm test
 ```
 
-`npm test` runs Vitest unit tests under `tests/` (parsers, IPC guards, search helpers, pricing). `npm run test:db` runs the SQLite integration tests under `tests/db/` (indexing, archive, migrations, search). Add or extend tests when changing parsing, indexing, search, migrations, or IPC validation.
+`npm test` runs Vitest unit tests under `tests/` (parsers, IPC guards, search helpers, pricing). `npm run test:db` runs the SQLite integration tests under `tests/db/` (indexing, archive, migrations, search, backups). `npm run test:e2e` launches the built app (`npx vite build` first) against `tests/e2e/fixtures` and drives it with Playwright; extend `tests/e2e/smoke.mjs` when a change could break startup, the workers, the watcher or a whole screen. Add or extend tests when changing parsing, indexing, search, migrations, or IPC validation.
 
 `better-sqlite3` ships N-API prebuilds, so the same binary loads in Node (tests, scripts) and in Electron (the app); there is nothing to rebuild after `npm install` or an Electron upgrade.
 
