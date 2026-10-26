@@ -1,9 +1,9 @@
 # Claude Vault
 
-**Claude Vault** is a local-first desktop app that indexes your [Claude Code](https://www.anthropic.com/claude-code) conversation history under `~/.claude/projects/`, makes it searchable (SQLite **FTS5**), and helps you **reuse** prompts with one-click copy, favorites, tags, and export.
+**Claude Vault** is a local-first desktop app that indexes your [Claude Code](https://www.anthropic.com/claude-code) conversation history, keeps it even after Claude Code deletes old transcripts, makes it searchable (SQLite **FTS5**), and helps you **reuse** your own prompts.
 
-- **OS:** macOS first (Electron); `electron-builder` also targets Windows (NSIS) and Linux (AppImage). Path logic works cross-platform; Windows/Linux are less battle-tested.
-- **Privacy:** No network calls; Claude files are read-only; app state lives in a local SQLite DB under your user data directory.
+- **OS:** macOS first (Electron); `electron-builder` also targets Windows (NSIS) and Linux (AppImage/deb). Path logic works cross-platform; Windows/Linux are less battle-tested.
+- **Privacy:** Claude's files are read-only — the app never writes under `~/.claude/`. The index lives in a local SQLite DB under your user data directory. The only network request is an update check against GitHub Releases, which sends no conversation data and can be turned off in **Settings** ([ADR-0005](docs/decisions/0005-update-check-network-exception.md)).
 - **License:** MIT — see [LICENSE](LICENSE).
 
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
@@ -17,25 +17,25 @@
 
 | Area | Status |
 |------|--------|
-| Indexing (root UUID `.jsonl`, `subagents/`, `agent-transcripts/`, `sessions-index.json`) | Yes |
-| Full-text search + project/role + **메타 제외** + **서브에이전트 제외** | Yes |
-| **검색 정밀도**(OR/AND/구문) · **정렬**(관련도/최신/오래된) · **기간 필터** | Yes |
-| **최근 세션** 목록 (검색어 비울 때) | Yes |
-| **세션 전체** 타임라인 모달 (Esc, 메타 토글, **마크다운 렌더링**) | Yes |
-| **명령 팔레트**(⌘/Ctrl+K) + 결과 키보드 내비게이션 | Yes |
-| **프롬프트 템플릿**(`{{변수}}` 채우기) | Yes |
-| **멀티툴 어댑터**(Claude Code · Codex CLI) | Yes |
-| **라이트/다크 테마** 전환 | Yes |
-| Clipboard copy | Yes |
-| Favorites | Yes |
-| Tags on messages | Yes |
-| Live file watch (`chokidar` v4, root-dir watch) | Yes |
-| **실측 토큰 사용량 통계** (모델별 breakdown, 타임스탬프 기준 활동) | Yes |
-| Usage stats + Markdown/CSV export (보내기 시 필터 옵션) | Yes |
+| Indexing of `~/.claude/projects` (root `{uuid}.jsonl`, `subagents/`, `agent-transcripts/`, `sessions-index.json`) and `~/.claude/plans` | Yes — append-only, on a background worker |
+| **Archive**: sessions Claude Code deletes stay searchable (badged "보관됨"); purge is explicit | Yes (default on) |
+| Full-text search + project / role / date / meta / subagents / **tool output** / **tag** filters | Yes |
+| Match modes (OR / AND / phrase), sort (relevance / newest / oldest), substring fallback for infix & CJK | Yes |
+| **My prompts**: what you typed, deduplicated, recent or most used | Yes |
+| **Files**: which sessions touched a file, when, on which branch | Yes |
+| Favorites and tags that survive re-indexing and upgrades | Yes |
+| Session transcript modal (markdown, meta/tool toggles, archived banner) | Yes |
+| Prompt templates with `{{variables}}` | Yes |
+| Command palette (⌘/Ctrl+K), keyboard result navigation | Yes |
+| Usage stats per model, counted **once per API response**; cost estimate with 5-minute / 1-hour cache writes and an editable, dated price table | Yes |
+| Export Markdown / CSV — copy or save to a file | Yes |
+| Settings: archive mode, update checks, data location, full re-read | Yes |
+| Codex CLI sessions (`~/.codex/sessions`, grouped by working directory) | Best effort |
+| Korean / English UI, light / dark theme | Yes |
 
 ## Documentation
 
-See the [docs/](docs/README.md) directory (PRD, architecture, ADRs, roadmap, release notes for packaging).
+See the [docs/](docs/README.md) directory (PRD, architecture, ADRs, roadmap, release process).
 
 [CHANGELOG.md](CHANGELOG.md) — 변경 이력.
 
@@ -56,13 +56,17 @@ VAULT_OPEN_DEVTOOLS=1 npm run dev
 
 Other scripts:
 
-- `npm run build` — production Vite build + installer via `electron-builder`.
-- `npm run typecheck` — typecheck main/preload/shared and the renderer.
+- `npm run build` — typecheck, production Vite build, installer via `electron-builder`.
+- `npm run typecheck` — main/preload/shared and the renderer.
 - `npm run lint` — ESLint (flat config).
-- `npm test` — Vitest unit tests (parser, search-merge, IPC guards).
-- `npm run poc` — CLI scan of `~/.claude/projects` with parser stats (no GUI).
+- `npm test` — unit tests (parsers, search helpers, pricing, IPC guards).
+- `npm run test:db` — SQLite integration tests (indexing, archive, migrations, search). Runs inside Electron in Node mode, so it uses the same native build as the app.
+- `npm run bench -- <vault.db>` — search latency on an existing index.
+- `npm run poc` — CLI scan of your transcripts with parser stats (no GUI, no DB).
 
-CI (GitHub Actions) runs typecheck + lint + tests + renderer build on every push/PR.
+Environment overrides: `CLAUDE_HOME`, `CODEX_HOME` (absolute paths), `VAULT_USER_DATA` (put the vault DB somewhere disposable), `VAULT_DISABLE_UPDATER=1`.
+
+CI (GitHub Actions) runs typecheck, lint, unit tests, DB integration tests, and the renderer build on every push/PR.
 
 ## Contributing
 
@@ -70,4 +74,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and ideas go to **GitHub Is
 
 ## Disclaimer
 
-This is an independent open-source tool, not affiliated with Anthropic. It reads files already stored on your machine by Claude Code; respect your own security policies when indexing work repositories.
+This is an independent open-source tool, not affiliated with Anthropic. It reads files already stored on your machine by Claude Code; respect your own security policies when indexing work repositories. Cost figures are estimates from logged token counts and a user-editable price table, not billing data.

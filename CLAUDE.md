@@ -6,12 +6,14 @@ This repository is the **Claude Vault** Electron + React app. Use this file as a
 
 - `npm run dev` — Vite + Electron with HMR for the renderer. DevTools는 기본 비활성(터미널 DevTools 잡음 방지). 필요 시 `VAULT_OPEN_DEVTOOLS=1 npm run dev`.
 - `npm run build` — Typecheck project refs, Vite production build, `electron-builder` DMG.
-- `npm run poc` — Standalone scan of `~/.claude/projects` + parser stats.
+- `npm run poc` — Standalone scan of `~/.claude/projects` (+ Codex) with parser stats.
+- `npm test` — unit tests. `npm run test:db` — SQLite integration tests (run inside Electron in Node mode). `npm run bench -- <vault.db>` — search latency.
+- Running from an agent inside VS Code: the environment carries `ELECTRON_RUN_AS_NODE=1`; unset it before launching the app (`env -u ELECTRON_RUN_AS_NODE …`). Use `VAULT_USER_DATA=<abs dir>` so test runs never touch the real vault DB.
 
 ## Layout
 
-- `electron/` — main process, preload, indexing, SQLite, IPC handlers.
-- `src/` — React UI (Tailwind). Uses `window.vault` from preload; types in `src/vite-env.d.ts`.
+- `electron/` — main process, preload, IPC handlers; `indexWorker.ts` (only writer of index tables) and `queryWorker.ts` (search/stats/transcripts) run on worker threads.
+- `src/` — React UI (Tailwind). `App.tsx` is the shell + search; tabs in `src/tabs/`, widgets in `src/components/`. Uses `window.vault` from preload; types in `src/vite-env.d.ts`.
 - `shared/` — JSONL parser + IPC DTOs imported by both main and renderer type-only paths.
 - `docs/` — PRD, architecture, ADRs, roadmap, release process.
 
@@ -21,11 +23,16 @@ This repository is the **Claude Vault** Electron + React app. Use this file as a
   transcripts and plans; Vault only ever reads them. The app itself writes nowhere under
   `~/.claude/` at all. User-installed tooling (e.g. the `/ingest` skill in `~/.claude/skills/`)
   may write outside those two roots when the user asks for it — see [ADR-0004](docs/decisions/0004-write-scope-under-claude-home.md).
-- **No telemetry** — do not add network calls without an explicit, reviewed ADR.
+  That includes `mkdir`: a missing root is polled, never created.
+- **User data never keys on row ids** — favorites and tags use `messages.msg_key` (line uuid). Message ids change whenever a file is re-read ([ADR-0006](docs/decisions/0006-stable-keys-append-indexing-archive.md)).
+- **Migrations never drop `sessions`/`messages`** — archived sessions exist only in the vault DB. Force a re-parse with `requestFullReparse` instead.
+- **Nothing slow on the main thread** — scans and heavy queries belong on the workers ([ADR-0007](docs/decisions/0007-worker-threads.md)).
+- **No telemetry** — do not add network calls without an explicit, reviewed ADR. The update check is the only one ([ADR-0005](docs/decisions/0005-update-check-network-exception.md)).
 - **SQLite migrations** — bump schema carefully in `electron/db.ts` and document in `docs/architecture.md`.
 
 ## Where to start an Issue fix
 
-- Search problems → `electron/search.ts` and FTS triggers in `electron/db.ts`.
-- Missing messages → `shared/jsonlParse.ts` and a fixture line in a test or PoC output.
-- UI regressions → `src/App.tsx` (monolith for now; split when a second screen stabilizes).
+- Search problems → `electron/search.ts` and the FTS view/triggers in `electron/db.ts`.
+- Missing or misclassified messages → `shared/jsonlParse.ts` (Codex: `shared/codexParse.ts`) and a fixture line in a test or PoC output.
+- Indexing, archive, live updates → `electron/indexer.ts`, `electron/indexWorker.ts`, tests in `tests/db/`.
+- UI regressions → `src/App.tsx` (shell + search) or the tab in `src/tabs/`.

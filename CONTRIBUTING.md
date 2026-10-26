@@ -24,7 +24,7 @@ npm run dev
 npm test
 ```
 
-`npm test` runs Vitest unit tests under `tests/` (parser, IPC guards, search helpers). Add or extend tests when changing parsing, search, or IPC validation.
+`npm test` runs Vitest unit tests under `tests/` (parsers, IPC guards, search helpers, pricing). `npm run test:db` runs the SQLite integration tests under `tests/db/` (indexing, archive, migrations, search) inside Electron in Node mode. Add or extend tests when changing parsing, indexing, search, migrations, or IPC validation.
 
 `better-sqlite3` is a native module; if Electron fails to load it after a version bump, run:
 
@@ -36,13 +36,15 @@ npm run postinstall
 
 - TypeScript strict mode.
 - Prefer explicit types on exported APIs (`shared/ipc.ts`).
-- Keep the main process the only place that touches the filesystem and SQLite; renderer goes through `window.vault`.
+- Keep the renderer behind `window.vault`; only the main process and its workers touch the filesystem and SQLite. Long-running work goes on a worker, not the main thread.
+- User-visible strings go through `shared/i18n.ts` (Korean is the source; English is required by the type).
 
 ## Pull request checklist
 
 - [ ] `npm run build` passes (or explain platform-specific skips).
 - [ ] `npm test` passes for logic changes in `shared/`, `electron/search`, or `electron/ipcGuards`.
-- [ ] User-visible strings: English or Korean is fine for now; prefer clarity over volume.
+- [ ] `npm run test:db` passes for changes to indexing, the schema, search SQL, or queries.
+- [ ] User-visible strings added to both `ko` and `en` in `shared/i18n.ts`.
 - [ ] Linked Issue or ADR where applicable.
 
 ## Code of conduct
