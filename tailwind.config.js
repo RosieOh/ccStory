@@ -1,83 +1,43 @@
 /** @type {import('tailwindcss').Config} */
-const z = (n) => `rgb(var(--z-${n}) / <alpha-value>)`
+const v = (name) => `var(--${name})`
 
 module.exports = {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
         sans: [
+          'Pretendard Variable',
           'Pretendard',
-          'Inter',
-          'system-ui',
           '-apple-system',
-          'Segoe UI',
+          'BlinkMacSystemFont',
+          'Apple SD Gothic Neo',
           'Malgun Gothic',
           'sans-serif',
         ],
-        mono: [
-          'JetBrains Mono',
-          'SFMono-Regular',
-          'Menlo',
-          'Consolas',
-          'D2Coding',
-          'monospace',
-        ],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'D2Coding', 'monospace'],
       },
-      // The neutral scale and brand roles are CSS variables (see index.css), so
-      // the same class set themes light and dark. Accent hues stay untouched.
+      // Every colour is a CSS variable from index.css, so one class set themes light
+      // and dark. Translucency comes from the glass component classes, not alpha
+      // modifiers, so these are plain var() references.
       colors: {
-        white: 'rgb(var(--white) / <alpha-value>)',
-        zinc: {
-          50: z(50),
-          100: z(100),
-          200: z(200),
-          300: z(300),
-          400: z(400),
-          500: z(500),
-          600: z(600),
-          700: z(700),
-          800: z(800),
-          900: z(900),
-          950: z(950),
+        ink: { 1: v('ink-1'), 2: v('ink-2'), 3: v('ink-3'), 4: v('ink-4') },
+        brand: { DEFAULT: v('brand'), hi: v('brand-hi'), lo: v('brand-lo'), ink: v('brand-ink') },
+        line: { DEFAULT: v('line'), strong: v('line-strong') },
+        well: v('well'),
+        tone: {
+          green: v('tone-green'),
+          amber: v('tone-amber'),
+          blue: v('tone-blue'),
+          orange: v('tone-orange'),
+          violet: v('tone-violet'),
+          rose: v('tone-rose'),
+          gray: v('tone-gray'),
         },
-        brand: {
-          DEFAULT: 'rgb(var(--brand) / <alpha-value>)',
-          hover: 'rgb(var(--brand-hover) / <alpha-value>)',
-          fg: 'rgb(var(--brand-fg) / <alpha-value>)',
-          soft: 'rgb(var(--brand-soft) / <alpha-value>)',
-          line: 'rgb(var(--brand-line) / <alpha-value>)',
-          text: 'rgb(var(--brand-text) / <alpha-value>)',
-        },
-        bubble: {
-          user: 'rgb(var(--bubble-user) / <alpha-value>)',
-          'user-line': 'rgb(var(--bubble-user-line) / <alpha-value>)',
-          ai: 'rgb(var(--bubble-ai) / <alpha-value>)',
-          'ai-line': 'rgb(var(--bubble-ai-line) / <alpha-value>)',
-        },
-        plan: {
-          bg: 'rgb(var(--plan-bg) / <alpha-value>)',
-          line: 'rgb(var(--plan-line) / <alpha-value>)',
-          text: 'rgb(var(--plan-text) / <alpha-value>)',
-        },
-        snippet: 'rgb(var(--snippet) / <alpha-value>)',
-        scrim: 'rgb(var(--scrim) / var(--scrim-alpha))',
-      },
-      boxShadow: {
-        e1: 'var(--shadow-e1)',
-        e2: 'var(--shadow-e2)',
-        e3: 'var(--shadow-e3)',
-      },
-      // Console-grade radii: controls read as precise, not friendly.
-      borderRadius: {
-        DEFAULT: '4px',
-        md: '5px',
-        lg: '6px',
-        xl: '8px',
-        '2xl': '10px',
       },
       transitionTimingFunction: {
-        out: 'cubic-bezier(.22,.61,.36,1)',
+        out: 'cubic-bezier(.16,1,.3,1)',
       },
     },
   },
