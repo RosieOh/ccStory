@@ -18,14 +18,17 @@ export type ModelPrice = {
   cacheWrite1hPerMTok: number
 }
 
-/** The date of the published pricing the seeded numbers below were taken from. */
+/** The date of Anthropic's published pricing the `claude-*` rows below were taken from. */
 export const PRICES_AS_OF = '2026-10-06'
+
+/** The date of OpenAI's published pricing (developers.openai.com) the `gpt-*` rows were taken from. */
+export const OPENAI_PRICES_AS_OF = '2026-10-27'
 
 /**
  * Bumped whenever DEFAULT_PRICES gains models. On a bump, models missing from the
  * user's table are added once; existing rows (and so user edits) are never touched.
  */
-export const PRICES_SEED_VERSION = 2
+export const PRICES_SEED_VERSION = 3
 
 /**
  * Keys are matched as prefixes against the `model` string recorded in the
@@ -44,6 +47,22 @@ function tier(input: number, output: number, cacheRead = input * 0.1): Omit<Mode
     cacheReadPerMTok: r(cacheRead),
     cacheWritePerMTok: r(input * 1.25),
     cacheWrite1hPerMTok: r(input * 2),
+  }
+}
+
+/**
+ * OpenAI rates for Codex CLI sessions: standard tier, prompts up to 272K tokens. Cached
+ * input has its own published rate. Cache writes use the 30-minute rate where one is
+ * published (Codex logs do not record the TTL); models without one bill writes as plain
+ * input. The 12-hour rate fills the second write column, which Codex usage never uses.
+ */
+function openai(input: number, cachedInput: number, output: number, write30m = input, write12h = write30m): Omit<ModelPrice, 'model'> {
+  return {
+    inputPerMTok: input,
+    outputPerMTok: output,
+    cacheReadPerMTok: cachedInput,
+    cacheWritePerMTok: write30m,
+    cacheWrite1hPerMTok: write12h,
   }
 }
 
@@ -71,6 +90,26 @@ export const DEFAULT_PRICES: ModelPrice[] = [
   { model: 'claude-haiku-5-5', ...tier(0.1, 0.5) },
   { model: 'claude-haiku-4-5', ...tier(1, 5) },
   { model: 'claude-3-5-haiku', ...tier(0.8, 4) },
+  // OpenAI (Codex CLI). Matching is by prefix, so every model that extends a listed name
+  // is listed too: without `gpt-5.5-pro` it would be priced as `gpt-5.5` ($5, not $30).
+  { model: 'gpt-6-astra', ...openai(10, 1, 50, 12.5, 25) },
+  { model: 'gpt-6.1-sol', ...openai(2, 0.1, 10, 2.5, 5) },
+  { model: 'gpt-6.1-terra', ...openai(1, 0.05, 5, 1.25, 2.5) },
+  { model: 'gpt-6-sol', ...openai(2, 0.2, 10, 2.5, 5) },
+  { model: 'gpt-6-luna', ...openai(0.1, 0.01, 0.5, 0.125, 0.25) },
+  // Promotional rate, published as valid at least through 2026-11-21.
+  { model: 'gpt-5.6-sol', ...openai(4, 0.4, 20, 5, 10) },
+  { model: 'gpt-5.6-terra', ...openai(2, 0.2, 12, 2.5, 5) },
+  { model: 'gpt-5.6-luna', ...openai(0.2, 0.02, 1.2, 0.25, 0.5) },
+  { model: 'gpt-5.6-cyber', ...openai(12.5, 1.25, 75) },
+  { model: 'gpt-5.5-cyber', ...openai(12.5, 1.25, 75) },
+  { model: 'gpt-5.5-pro', ...openai(30, 30, 180) },
+  { model: 'gpt-5.5', ...openai(5, 0.5, 30) },
+  { model: 'gpt-5.4-pro', ...openai(30, 30, 180) },
+  { model: 'gpt-5.4-mini', ...openai(0.75, 0.075, 4.5) },
+  { model: 'gpt-5.4-nano', ...openai(0.2, 0.02, 1.25) },
+  { model: 'gpt-5.4', ...openai(2.5, 0.25, 15) },
+  { model: 'gpt-5.3-codex', ...openai(1.75, 0.175, 14) },
 ]
 
 export type TokenCounts = {
