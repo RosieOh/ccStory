@@ -134,3 +134,31 @@ describe('current models and cache TTLs', () => {
     expect(cost).toBeCloseTo(20)
   })
 })
+
+describe('OpenAI models used by Codex CLI', () => {
+  it('prices the models Codex sessions record, with cached input at its own rate', () => {
+    const sol = findPrice('gpt-5.6-sol', DEFAULT_PRICES)!
+    expect([sol.inputPerMTok, sol.cacheReadPerMTok, sol.outputPerMTok]).toEqual([4, 0.4, 20])
+    expect(findPrice('gpt-6-astra', DEFAULT_PRICES)?.outputPerMTok).toBe(50)
+    // Codex reports cached tokens as a subset of input; the parser splits them off, so a
+    // response with 900 input (600 cached) and 120 output costs 300×4 + 600×0.4 + 120×20.
+    expect(costOf('gpt-5.6-sol', { input: 300, output: 120, cacheRead: 600, cacheCreation: 0 }, DEFAULT_PRICES)).toBeCloseTo(
+      (300 * 4 + 600 * 0.4 + 120 * 20) / 1e6,
+      12,
+    )
+  })
+
+  it('lists every model that extends a priced name, so a prefix never under-prices it', () => {
+    expect(findPrice('gpt-5.5-pro', DEFAULT_PRICES)?.inputPerMTok).toBe(30)
+    expect(findPrice('gpt-5.5-cyber', DEFAULT_PRICES)?.inputPerMTok).toBe(12.5)
+    expect(findPrice('gpt-5.5', DEFAULT_PRICES)?.inputPerMTok).toBe(5)
+    expect(findPrice('gpt-5.4-mini', DEFAULT_PRICES)?.inputPerMTok).toBe(0.75)
+    expect(findPrice('gpt-6.1-sol', DEFAULT_PRICES)?.cacheReadPerMTok).toBe(0.1)
+    expect(findPrice('gpt-6-sol', DEFAULT_PRICES)?.cacheReadPerMTok).toBe(0.2)
+  })
+
+  it('leaves models without a published price unpriced', () => {
+    expect(findPrice('codex-auto-review', DEFAULT_PRICES)).toBeNull()
+    expect(findPrice('gpt-4o', DEFAULT_PRICES)).toBeNull()
+  })
+})

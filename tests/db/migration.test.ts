@@ -88,6 +88,8 @@ describe('migration from the v8 schema', () => {
     expect(edited.inputPerMTok).toBe(7)
     expect(edited.cacheWrite1hPerMTok).toBe(14)
     expect(prices.some((p) => p.model === 'claude-opus-5-5')).toBe(true)
+    // Seed v3 added the OpenAI models Codex sessions use, without touching the edit above.
+    expect(prices.find((p) => p.model === 'gpt-5.6-sol')?.inputPerMTok).toBe(4)
   })
 
   it('falls back to file#line keys when the source line is gone', () => {
