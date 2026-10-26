@@ -149,6 +149,11 @@ try {
     // Two responses, each one line here; a response repeated over lines would still count once.
     assert.equal(opus?.messages, 2)
     assert.equal(opus?.output, 65)
+    // This launch counts as a day the app was opened (roadmap go/no-go measure).
+    const p = (n) => String(n).padStart(2, '0')
+    const now = new Date()
+    assert.deepEqual(s.appOpenDays, [`${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`])
+    await page.locator('main').getByText(/Vault를 연 날|Days you opened Vault/).waitFor({ timeout: 5_000 })
   })
 
   await step('plans and Codex sessions are indexed', async () => {
