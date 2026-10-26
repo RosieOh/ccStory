@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-03T08:00:00.000Z","type":"session_meta","payload":{"id":"codex-e2e","cwd":"/work/codex-demo"}}
+{"timestamp":"2026-10-03T08:00:00.000Z","type":"turn_context","payload":{"cwd":"/work/codex-demo","model":"gpt-5.6-sol"}}
+{"timestamp":"2026-10-03T08:00:00.000Z","type":"response_item","payload":{"type":"message","id":"codex-m1","role":"user","content":[{"type":"input_text","text":"rename the cobaltfinch helper"}]}}
+{"timestamp":"2026-10-03T08:00:00.000Z","type":"response_item","payload":{"type":"message","id":"codex-m2","role":"assistant","content":[{"type":"output_text","text":"Renamed it."}]}}
+{"timestamp":"2026-10-03T08:00:00.000Z","type":"token_usage_record","payload":{"response_id":"resp_e2e_1","usage":{"input_tokens":900,"cached_input_tokens":600,"output_tokens":120}}}
