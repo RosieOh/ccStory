@@ -77,6 +77,11 @@ describe('new channel guards', () => {
       autoUpdate: false,
     })
     expect(sanitizeSettingsPatch({ archiveMode: 'nuke', autoUpdate: 'yes' })).toEqual({})
+    expect(sanitizeSettingsPatch({ backupKeep: 0 })).toEqual({ backupKeep: 0 })
+    expect(sanitizeSettingsPatch({ backupKeep: 7 })).toEqual({ backupKeep: 7 })
+    // Only the offered choices: anything else could prune more than the user picked.
+    expect(sanitizeSettingsPatch({ backupKeep: 2 })).toEqual({})
+    expect(sanitizeSettingsPatch({ backupKeep: '3' })).toEqual({})
   })
 
   it('normalizes prompt queries', () => {
