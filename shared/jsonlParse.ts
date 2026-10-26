@@ -374,6 +374,12 @@ const NOT_HUMAN_PROMPT = [
 ]
 
 /**
+ * `turnOrigin` (newer Claude Code) says who produced a user turn. These are never the
+ * human typing; `sdk` stays (it carries the person's answers to a question prompt).
+ */
+const NON_HUMAN_TURN_ORIGINS = new Set(['task_notification', 'peer', 'system'])
+
+/**
  * The prompt as the human typed it, or null when the text is harness-generated.
  * Slash commands (`<command-name>`) and `!` shell inputs (`<bash-input>`) are rendered
  * back into the form the user typed.
@@ -617,6 +623,9 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     text = `${operationalLabel(obj, topType)}\n${truncate(text, MAX_BOOKKEEPING_BODY)}`
     isBookkeeping = true
   }
+  // A copy of a request (api-request-blob…) repeats tool calls that already appear on
+  // their real lines; recording its paths would list the same edit twice in Files.
+  if (!conversational) filePaths = []
   // Harness-injected user turns (skill bodies, caveats) are flagged `isMeta` by Claude Code.
   if (obj.isMeta === true) isBookkeeping = true
 
@@ -635,6 +644,7 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     role === 'user' &&
     !isBookkeeping &&
     !isSidechain &&
+    !NON_HUMAN_TURN_ORIGINS.has(str(obj.turnOrigin)) &&
     (contentKinds.includes('text') || contentKinds.includes('string'))
       ? extractPromptText(text)
       : null
