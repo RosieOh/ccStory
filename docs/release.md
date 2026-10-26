@@ -28,7 +28,18 @@ The Release is created as a **draft**; review it and hit publish. `latest-mac.ym
 / `latest.yml` must be attached (they are, by the step above) or auto-update
 won't see the new version.
 
-You can also run it on demand from the Actions tab (`workflow_dispatch`).
+### Dry run
+
+Before tagging, check that all three platforms still package:
+
+```bash
+gh workflow run release.yml -f publish=never   # or Actions → Release → Run workflow
+```
+
+A manual run defaults to `publish: never`. It builds the installers on macOS, Windows and
+Linux and lists them in the job log. It creates no Release and uploads nothing, not even
+an Actions artifact, because on a public repository an artifact is a download anyone can
+fetch. `publish: always` publishes to a draft Release like a tag does.
 
 ## Manual local build
 
