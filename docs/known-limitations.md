@@ -31,8 +31,9 @@ automatic backups off (ADR-0010).
 
 The Codex rollout format is undocumented; the adapter maps `response_item` messages, tool
 calls/outputs and `token_usage_record` usage, and groups sessions by `session_meta.cwd`.
-Codex files are re-read from the start on change (the format is stateful). OpenAI model
-prices are not seeded — those models show as "unpriced" until you add rows.
+Codex files are re-read from the start on change (the format is stateful). OpenAI prices
+are seeded from the standard tier as of `OPENAI_PRICES_AS_OF`; models with no published
+price (e.g. `codex-auto-review`) show as "unpriced" until you add a row.
 
 ## Search
 
@@ -43,10 +44,13 @@ prices are not seeded — those models show as "unpriced" until you add rows.
 
 ## Cost estimates
 
-Estimates from logged token counts × an editable price table dated `PRICES_AS_OF`. Not
-modeled: Haiku 5.5's >100K-token prompt tier, batch/priority discounts, fast mode, and
-subscription plans (usage under a subscription is not billed per token, so the figure is
-an API-rate equivalent, not what you paid).
+Estimates from logged token counts × an editable price table dated `PRICES_AS_OF`
+(Claude) and `OPENAI_PRICES_AS_OF` (OpenAI). Not modeled: Haiku 5.5's >100K-token prompt
+tier, OpenAI's >272K-token long-context rates, batch/flex/priority discounts, fast mode,
+and subscription plans (usage under a subscription is not billed per token, so the figure
+is an API-rate equivalent, not what you paid). `gpt-5.6-sol` is seeded at its
+promotional rate, published as valid at least through 2026-11-21. Codex logs do not
+record a cache TTL, so OpenAI cache writes use the 30-minute rate.
 
 ## Platform
 

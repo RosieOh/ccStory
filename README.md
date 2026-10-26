@@ -28,7 +28,7 @@
 | Prompt templates with `{{variables}}` | Yes |
 | Command palette (⌘/Ctrl+K), keyboard result navigation | Yes |
 | Stats: days you opened Vault per week (the roadmap's go/no-go measure) | Yes |
-| Usage stats per model, counted **once per API response**; cost estimate with 5-minute / 1-hour cache writes and an editable, dated price table | Yes |
+| Usage stats per model, counted **once per API response**; cost estimate with 5-minute / 1-hour cache writes and an editable, dated price table (Claude and the OpenAI models Codex uses) | Yes |
 | Export Markdown / CSV — copy or save to a file | Yes |
 | **Backups**: daily DB snapshots plus one before upgrades, purges and restores; restore in Settings; a DB that won't open is recovered from the newest backup | Yes (keeps 3) |
 | Settings: archive mode, backups, update checks, data location, full re-read | Yes |
