@@ -19,6 +19,18 @@ All notable changes to this project are documented in this file.
   advisories in vite 5 / vitest 3 / esbuild).
 - CI and release run on Node 22. Dependabot checks only `electron`, `electron-updater`,
   `better-sqlite3` and GitHub Actions, monthly.
+- **Backups** ([ADR-0010](docs/decisions/0010-vault-db-backups.md)): a daily `VACUUM INTO`
+  snapshot of the vault DB on the index worker. There is also one before a schema
+  migration, before "Delete all archived" (the purge is refused if it fails) and before
+  a restore. The newest 3 are kept (0/1/3/7 in Settings). Settings lists them, with
+  "Back up now", "Open folder" and a two-click restore that relaunches the app. Measured
+  on a 780 MB DB: 2.5–3.3 s, with main-process IPC at p95 ≤ 3.4 ms meanwhile.
+- A DB that cannot be opened is now quarantined and replaced by the newest backup that
+  passes an integrity check, with a dialog saying so. Before, an empty DB was created
+  silently, and archived conversations dropped out of the app.
+- Main-process dialogs use 해요체 and "색인" like the rest of the UI.
+- Fixed: "My prompts" showed a 12 px horizontal scrollbar (`.scroll-area`'s negative
+  margin overflowed the scroller).
 - Fixed: the release workflow packaged without building first (`dist/` and
   `dist-electron/` do not exist on a fresh checkout), so the first tag would have
   published installers that cannot start.
