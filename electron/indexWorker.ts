@@ -3,7 +3,7 @@ import { openVaultDb, requestFullReparse } from './db.js'
 import { BackupError, snapshot } from './backup.js'
 import { getAvailableAdapters } from './adapters.js'
 import { archiveModeOf, handleSessionUnlink, indexAdapterProject, indexSinglePath, reconcileMissing } from './indexer.js'
-import { fullReindexPlans, indexPlanSinglePath, isPathUnderPlansRoot } from './plansIndexer.js'
+import { fullReindexPlans, indexPlanSinglePath, isPathUnder } from './plansIndexer.js'
 import type { BackupReason } from '../shared/ipc.js'
 import type { WorkerInbound, WorkerOutbound } from './workerProtocol.js'
 
@@ -62,7 +62,7 @@ async function runScan(job: Extract<Job, { kind: 'scan' }>) {
   for (const adapter of live) reconcileMissing(db, adapter, mode)
   post({ type: 'progress', progress: { phase: 'plans', current: 0, total: 1 } })
   await tick()
-  const plans = fullReindexPlans(db, plansRoot)
+  const plans = fullReindexPlans(db, plansRoot, mode)
   // A full scan can leave hundreds of MB in the WAL; fold it back into the main file.
   // Best effort: an open reader on the query worker just makes this a partial checkpoint.
   try {
@@ -83,13 +83,16 @@ async function runPaths() {
     const [p, kind] = pendingPaths.entries().next().value as [string, 'add' | 'change' | 'unlink']
     pendingPaths.delete(p)
     try {
-      if (isPathUnderPlansRoot(plansRoot, p)) {
+      if (isPathUnder(plansRoot, p)) {
         if (p.toLowerCase().endsWith('.md')) {
-          indexPlanSinglePath(db, plansRoot, p)
+          indexPlanSinglePath(db, plansRoot, p, mode)
           changed = true
         }
       } else if (p.toLowerCase().endsWith('.jsonl')) {
-        if (kind === 'unlink') changed = handleSessionUnlink(db, p, mode) || changed
+        // Only for a root that still exists: an unmounted volume is not a deletion.
+        if (kind === 'unlink') {
+          if (adapters.some((a) => isPathUnder(a.root, p))) changed = handleSessionUnlink(db, p, mode) || changed
+        }
         else changed = (await indexSinglePath(db, adapters, p, tick)) || changed
       }
     } catch (err) {
