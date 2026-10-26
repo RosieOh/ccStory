@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### First-release readiness (v0.6.0)
 
+- App icon: the brand mark (vault glyph on the brand gradient) on the macOS icon grid.
+  `build/icon.svg` is the source, and `scripts/build-icons.sh` regenerates the `.icns`,
+  the `.ico` (each size rendered from the SVG, full-bleed) and the `.png`. The installers
+  no longer ship Electron's default icon.
 - CI runs the unit and DB tests on macOS, Windows and Linux (typecheck, lint and the
   bundle build once).
 - Release dry run: `gh workflow run release.yml -f publish=never` builds the installers
