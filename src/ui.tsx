@@ -1,3 +1,4 @@
+
 /** 사이드바: 경로 꼬리만 짧게 (전체는 title 툴팁). */
 export function sidebarPrimaryLabel(displayName: string): string {
   const parts = displayName.split(/[/\\]/u).filter(Boolean)
@@ -17,6 +18,9 @@ export function Icon({ name, className = '' }: { name: TabIcon; className?: stri
     export: 'M12 15V3m0 0L8 7m4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
     folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z',
     file: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Zm0 0v5h5',
+    prompt: 'M4 5h16v11H8l-4 4V5Zm4 4h8m-8 3h5',
+    settings:
+      'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2-1.2L14.5 3h-5l-.4 2.6a7.4 7.4 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2 1.2l.4 2.6h5l.4-2.6a7.4 7.4 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z',
   }
   return (
     <svg
@@ -34,7 +38,16 @@ export function Icon({ name, className = '' }: { name: TabIcon; className?: stri
   )
 }
 
-export type TabIcon = 'search' | 'star' | 'template' | 'chart' | 'export' | 'folder' | 'file'
+export type TabIcon =
+  | 'search'
+  | 'star'
+  | 'template'
+  | 'chart'
+  | 'export'
+  | 'folder'
+  | 'file'
+  | 'prompt'
+  | 'settings'
 
 /** Segmented control: canvas track, raised surface thumb for the active option. */
 export function Segmented<T extends string>({
