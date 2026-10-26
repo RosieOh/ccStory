@@ -63,7 +63,16 @@ jobs:
         run: npx vite build
 
       - name: Package (and publish on a tag)
-        run: npx electron-builder --${{ matrix.platform }} --publish ${{ github.event_name == 'push' && 'always' || inputs.publish }}
+        shell: bash
+        run: |
+          # Secrets that are not configured arrive as empty strings, and electron-builder
+          # reads an empty CSC_LINK as a path (the checkout) and fails. Unset them so a
+          # build without signing secrets is a plain unsigned build.
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          [ -n "${CSC_LINK:-}" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
+          npx electron-builder --${{ matrix.platform }} --publish ${{ github.event_name == 'push' && 'always' || inputs.publish }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS: Developer ID cert + notarization (Apple Developer Program).
