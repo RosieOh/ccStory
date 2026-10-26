@@ -191,6 +191,7 @@ export const ko = {
   'stats.byModel': '모델별 사용',
   'stats.byModel.turns': '{turns}개 응답 · {tokens} 토큰',
   'stats.topWords': '내 프롬프트에 자주 나온 단어',
+  'stats.topWords.desc': '숫자는 그 단어가 나온 프롬프트 수예요',
   'stats.activity.ts': '일별 프롬프트 수',
   'stats.activity.mtime': '세션 수정일 기준 활동',
 
@@ -486,6 +487,7 @@ export const en: Messages = {
   'stats.byModel': 'Usage by model',
   'stats.byModel.turns': '{turns} responses · {tokens} tokens',
   'stats.topWords': 'Words I use most in prompts',
+  'stats.topWords.desc': 'Number of your prompts that contain the word',
   'stats.activity.ts': 'Prompts per day',
   'stats.activity.mtime': 'Activity by session file date',
 
