@@ -6,6 +6,13 @@ All notable changes to this project are documented in this file.
 
 ### First-release readiness (v0.6.0)
 
+- Plans follow archive mode (schema v10, `plan_files.archived_at`, added in place).
+  In Keep mode a deleted plan stays searchable, badged "보관됨"; in Mirror mode it is
+  deleted as before. "Delete all archived" includes plans, and Settings counts both.
+- Fixed: a missing plans root (unmounted volume, wrong `CLAUDE_HOME`) deleted every plan
+  from the vault on the next scan. Sessions already had this guard; plans now do too.
+  A watcher deletion event under a root that no longer exists is ignored for sessions as
+  well. Before, in Mirror mode, unmounting a volume could delete its sessions.
 - Stats: **Days you opened Vault**. It shows the last four weeks against the roadmap's
   go/no-go bar (opened on ≥3 days a week). The roadmap used to point at prompts per day,
   which measures Claude Code, not Vault. Only local dates are stored (`app_opens`, one
