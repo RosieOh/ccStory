@@ -9,22 +9,26 @@ type SessionsIndex = {
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__'])
 
-/** Human title: real cwd from Claude metadata when present. */
-export function readProjectDisplayTitle(projectRoot: string, slugFallback: string): string {
+/** The project's real working directory from `sessions-index.json`, when Claude Code wrote one. */
+export function readProjectOriginalPath(projectRoot: string): string | null {
   const idxPath = path.join(projectRoot, 'sessions-index.json')
-  if (fs.existsSync(idxPath)) {
-    try {
-      const j = JSON.parse(fs.readFileSync(idxPath, 'utf8')) as SessionsIndex
-      if (typeof j.originalPath === 'string' && j.originalPath.trim()) {
-        return j.originalPath.trim()
-      }
-      const ep = j.entries?.find((e) => typeof e.projectPath === 'string' && e.projectPath.trim())
-      if (ep?.projectPath) return ep.projectPath.trim()
-    } catch {
-      /* ignore corrupt index */
+  if (!fs.existsSync(idxPath)) return null
+  try {
+    const j = JSON.parse(fs.readFileSync(idxPath, 'utf8')) as SessionsIndex
+    if (typeof j.originalPath === 'string' && j.originalPath.trim()) {
+      return j.originalPath.trim()
     }
+    const ep = j.entries?.find((e) => typeof e.projectPath === 'string' && e.projectPath.trim())
+    if (ep?.projectPath) return ep.projectPath.trim()
+  } catch {
+    /* ignore corrupt index */
   }
-  return fallbackTitleFromSlug(slugFallback)
+  return null
+}
+
+/** Human title: real cwd from Claude metadata when present, else a guess from the slug. */
+export function readProjectDisplayTitle(projectRoot: string, slugFallback: string): string {
+  return readProjectOriginalPath(projectRoot) ?? fallbackTitleFromSlug(slugFallback)
 }
 
 /** When metadata is missing: show path tail after Desktop (common macOS layout). */
