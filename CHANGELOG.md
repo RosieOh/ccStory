@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### First-release readiness (v0.6.0)
+
+- `npm run test:e2e`: an end-to-end smoke test that launches the built app against
+  fixture transcripts and drives it with Playwright (13 steps, ~5 s). The steps cover
+  startup, indexing, UI search, prompts, stats (one count per API response), plans,
+  Codex, live append, archive on delete, the daily backup, no renderer errors, a clean
+  quit, and nothing written under the transcript roots. CI runs it on macOS, Windows and
+  Linux, the first time the app has been started on Windows or Linux at all.
+
 ### Runtime and security (v0.5.1)
 
 - Electron 33 → 44.9.3. Electron patches only its latest three majors, so 33 no longer
