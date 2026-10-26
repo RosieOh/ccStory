@@ -15,6 +15,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    // Node test driver whose page.evaluate callbacks run in the renderer.
+    files: ['tests/e2e/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     // Served as-is to the renderer before the bundle (pre-paint theme).
     files: ['public/**/*.js'],
     languageOptions: { globals: { ...globals.browser } },

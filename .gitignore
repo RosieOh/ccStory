@@ -10,3 +10,4 @@ tsconfig.node.tsbuildinfo
 
 # Optional local snapshots / dev assets (not used as runtime data sources)
 asstes/
+e2e-artifacts
