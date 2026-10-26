@@ -201,8 +201,10 @@ export function SettingsTab({
                 ] as const
               }
             />
-            <span className="text-[13px] text-ink-3 tabular">{t('settings.archive.count', { count: archivedSessions })}</span>
-            {archivedSessions > 0 && (
+            <span className="text-[13px] text-ink-3 tabular">
+              {t('settings.archive.count', { sessions: archivedSessions, plans: info.archivedPlans })}
+            </span>
+            {archivedSessions + info.archivedPlans > 0 && (
               <button
                 type="button"
                 className={`btn btn-xs ${confirmPurge ? 'btn-danger' : 'btn-tertiary'}`}
