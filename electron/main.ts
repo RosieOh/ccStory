@@ -2,11 +2,23 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import chokidar, { type FSWatcher } from 'chokidar'
-import { getSetting, openVaultDb, setSetting } from './db.js'
+import { getSetting, setSetting, type DbHandle } from './db.js'
+import {
+  BackupError,
+  backupKeepOf,
+  dailyBackupDue,
+  isBackupName,
+  listBackups,
+  openVaultDbWithRecovery,
+  pruneBackups,
+  restoreBackup,
+  verifyBackup,
+  type OpenOutcome,
+} from './backup.js'
 import { claudeHomeDir, defaultClaudePlansRoot } from './claudeRoots.js'
 import { allAdapters } from './adapters.js'
 import { archiveModeOf } from './indexer.js'
-import { IndexService } from './indexService.js'
+import { BackupFailed, IndexService } from './indexService.js'
 import { QueryService } from './queryService.js'
 import { checkForUpdates, getUpdateStatus, initAutoUpdate, installUpdate, setAutoUpdateEnabled } from './updater.js'
 import { listPrices, resetPrices, savePrices } from './prices.js'
@@ -26,8 +38,11 @@ import {
   sessionInfo,
   setMessageTags,
 } from './queries.js'
-import { IPC } from '../shared/ipc.js'
+import { DEFAULT_BACKUP_KEEP, IPC } from '../shared/ipc.js'
 import type {
+  BackupInfo,
+  BackupReason,
+  BackupResult,
   ExportSaveResult,
   FileRow,
   FileTouchRow,
@@ -35,6 +50,7 @@ import type {
   PlanListRow,
   PromptRow,
   ReindexResult,
+  RestoreResult,
   SessionMessageRow,
   Settings,
   SettingsInfo,
@@ -75,13 +91,17 @@ const userDataOverride = process.env.VAULT_USER_DATA?.trim()
 if (userDataOverride && path.isAbsolute(userDataOverride)) app.setPath('userData', userDataOverride)
 
 let mainWindow: BrowserWindow | null = null
-let db: ReturnType<typeof openVaultDb> | null = null
+let db: DbHandle | null = null
 let indexService: IndexService | null = null
 let queryService: QueryService | null = null
 let plansRoot = ''
 
 function vaultDbPath(): string {
   return path.join(app.getPath('userData'), 'vault.db')
+}
+
+function backupsDir(): string {
+  return path.join(app.getPath('userData'), 'backups')
 }
 
 function broadcastIndexUpdated() {
@@ -163,6 +183,51 @@ function readSettings(): Settings {
   return {
     archiveMode: db ? archiveModeOf(db) : 'keep',
     autoUpdate: db ? getSetting(db, 'autoUpdate') !== 'off' : true,
+    backupKeep: db ? backupKeepOf(db) : DEFAULT_BACKUP_KEEP,
+  }
+}
+
+let backupChain: Promise<unknown> = Promise.resolve()
+
+/**
+ * Snapshot on the index worker (VACUUM INTO of ~1 GB would block the main thread for
+ * seconds), then prune to the configured count. Serialized so a manual click during
+ * the daily run cannot start a second copy.
+ */
+function runBackup(reason: BackupReason): Promise<BackupResult> {
+  const job = backupChain.then(async (): Promise<BackupResult> => {
+    if (!indexService || !db) return { ok: false, error: 'failed', message: 'not ready' }
+    try {
+      const file = await indexService.backup(backupsDir(), reason)
+      // With backups off (0), a manual snapshot is extra: never prune the existing ones.
+      pruneBackups(backupsDir(), backupKeepOf(db))
+      return { ok: true, file }
+    } catch (err) {
+      const error = err instanceof BackupFailed && err.code === 'disk' ? 'disk' : 'failed'
+      console.error(`[vault] ${reason} backup failed:`, err)
+      return { ok: false, error, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  backupChain = job
+  return job
+}
+
+/** Once after the first scan, then hourly: take the daily snapshot when one is due. */
+function scheduleDailyBackups() {
+  const check = () => {
+    if (db && dailyBackupDue(backupsDir(), backupKeepOf(db))) void runBackup('daily')
+  }
+  check()
+  setInterval(check, 60 * 60 * 1000).unref()
+}
+
+function backupInfo(): BackupInfo {
+  const items = listBackups(backupsDir())
+  return {
+    dir: backupsDir(),
+    keep: db ? backupKeepOf(db) : DEFAULT_BACKUP_KEEP,
+    items,
+    totalBytes: items.reduce((n, b) => n + b.sizeBytes, 0),
   }
 }
 
@@ -365,15 +430,60 @@ function registerIpc() {
         setSetting(db, 'autoUpdate', patch.autoUpdate ? 'on' : 'off')
         setAutoUpdateEnabled(patch.autoUpdate)
       }
+      if (patch.backupKeep != null) {
+        setSetting(db, 'backupKeep', String(patch.backupKeep))
+        // Lowering the count applies right away; 0 stops new backups but deletes none.
+        pruneBackups(backupsDir(), patch.backupKeep)
+        if (dailyBackupDue(backupsDir(), patch.backupKeep)) void runBackup('daily')
+      }
     }
     return readSettings()
   })
 
   ipcMain.handle(IPC.archivePurge, async () => {
     if (!db) return 0
+    // Archived sessions exist nowhere else: never purge without a snapshot to undo it,
+    // unless the user turned backups off.
+    if (backupKeepOf(db) > 0) {
+      const b = await runBackup('pre-purge')
+      if (!b.ok) throw new Error(`backup-failed:${b.error}`)
+    }
     const n = purgeArchived(db)
     broadcastIndexUpdated()
     return n
+  })
+
+  ipcMain.handle(IPC.backupsList, async (): Promise<BackupInfo> => backupInfo())
+
+  ipcMain.handle(IPC.backupCreate, async (): Promise<BackupResult> => runBackup('manual'))
+
+  ipcMain.handle(IPC.backupsReveal, async () => {
+    fs.mkdirSync(backupsDir(), { recursive: true })
+    await shell.openPath(backupsDir())
+  })
+
+  ipcMain.handle(IPC.backupRestore, async (_e, rawName: unknown): Promise<RestoreResult> => {
+    if (!isBackupName(rawName)) return { ok: false, error: 'missing' }
+    const name = rawName
+    // Check the snapshot before anything is closed, so a bad file changes nothing.
+    try {
+      verifyBackup(path.join(backupsDir(), name))
+    } catch (err) {
+      const error = err instanceof BackupError && err.code !== 'disk' ? err.code : 'failed'
+      return { ok: false, error, message: err instanceof Error ? err.message : String(err) }
+    }
+    await backupChain.catch(() => undefined)
+    shuttingDown = true
+    await closeAll()
+    try {
+      restoreBackup(vaultDbPath(), backupsDir(), name)
+    } catch (err) {
+      // Relaunch anyway: startup recovery opens whatever DB (or backup) is usable.
+      console.error('[vault] restore failed:', err)
+    }
+    app.relaunch()
+    app.exit(0)
+    return { ok: false, error: 'failed', message: 'relaunching' }
   })
 
   ipcMain.handle(
@@ -541,34 +651,6 @@ function startWatcher() {
 }
 
 /**
- * The vault DB is mostly a rebuildable cache of ~/.claude, so a corrupt or unreadable
- * file must never block startup: quarantine it (kept on disk, so user data can still
- * be recovered by hand) and index again from scratch.
- */
-function openVaultDbResilient(): ReturnType<typeof openVaultDb> {
-  const file = vaultDbPath()
-  try {
-    return openVaultDb(file)
-  } catch (err) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    console.error('[vault] failed to open database, rebuilding:', err)
-    for (const suffix of ['', '-wal', '-shm']) {
-      const p = `${file}${suffix}`
-      try {
-        if (fs.existsSync(p)) fs.renameSync(p, `${p}.corrupt-${stamp}`)
-      } catch {
-        try {
-          fs.rmSync(p, { force: true })
-        } catch {
-          /* nothing else we can do; the retry below will surface it */
-        }
-      }
-    }
-    return openVaultDb(file)
-  }
-}
-
-/**
  * Main-process dialogs can fire before any window exists, so they cannot reach
  * the renderer's locale. Fall back to the OS locale — the only signal available
  * this early.
@@ -578,9 +660,40 @@ function mainLocale(): 'ko' | 'en' {
 }
 
 const MAIN_STRINGS = {
-  ko: { fatal: '예기치 못한 오류가 발생했습니다.', continue: '계속', initialIndex: '초기 인덱싱' },
-  en: { fatal: 'Something went wrong.', continue: 'Continue', initialIndex: 'initial indexing' },
+  ko: {
+    fatal: '예기치 못한 오류가 생겼어요.',
+    continue: '계속',
+    initialIndex: '초기 색인',
+    recovered: '색인 DB를 열 수 없어서 백업으로 되돌렸어요.',
+    recoveredDetail: '{from} 백업을 썼어요. 그 뒤 바뀐 대화는 ~/.claude에서 다시 색인해요.\n\n열리지 않은 파일은 지우지 않고 남겨 뒀어요:\n{file}',
+    rebuilt: '색인 DB를 열 수 없어서 새로 만들었어요.',
+    rebuiltDetail: '쓸 수 있는 백업이 없었어요. ~/.claude에서 다시 색인해요. 보관돼 있던 대화와 즐겨찾기·태그는 아래 파일에 남아 있어요:\n{file}',
+  },
+  en: {
+    fatal: 'Something went wrong.',
+    continue: 'Continue',
+    initialIndex: 'initial indexing',
+    recovered: 'The index database could not be opened, so a backup was restored.',
+    recoveredDetail: 'Restored from {from}. Conversations changed since then are re-indexed from ~/.claude.\n\nThe file that failed to open was kept:\n{file}',
+    rebuilt: 'The index database could not be opened, so a new one was created.',
+    rebuiltDetail: 'No usable backup was found. Everything is re-indexed from ~/.claude. Archived conversations, favorites and tags are still in this file:\n{file}',
+  },
 } as const
+
+/** Tells the user when startup had to restore or rebuild the DB (it used to happen silently). */
+function reportOpenOutcome(outcome: OpenOutcome) {
+  if (outcome.kind === 'ok' || !mainWindow) return
+  const s = MAIN_STRINGS[mainLocale()]
+  const fill = (text: string) =>
+    text.replace('{file}', outcome.quarantined).replace('{from}', outcome.kind === 'recovered' ? outcome.from : '')
+  void dialog.showMessageBox(mainWindow, {
+    type: outcome.kind === 'recovered' ? 'info' : 'warning',
+    title: 'Claude Vault',
+    message: outcome.kind === 'recovered' ? s.recovered : s.rebuilt,
+    detail: fill(outcome.kind === 'recovered' ? s.recoveredDetail : s.rebuiltDetail),
+    buttons: [s.continue],
+  })
+}
 
 function reportFatal(scope: string, err: unknown) {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
@@ -613,7 +726,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     plansRoot = defaultClaudePlansRoot()
-    db = openVaultDbResilient()
+    const opened = openVaultDbWithRecovery(vaultDbPath(), backupsDir())
+    db = opened.db
     const dbFile = vaultDbPath()
     queryService = new QueryService(dbFile)
     indexService = new IndexService({
@@ -629,10 +743,14 @@ if (!app.requestSingleInstanceLock()) {
     createWindow()
     applyContentSecurityPolicy()
     mainWindow?.webContents.once('did-finish-load', () => {
+      reportOpenOutcome(opened.outcome)
       indexService!.start()
       void indexService!
         .scan()
-        .then(() => startWatcher())
+        .then(() => {
+          startWatcher()
+          scheduleDailyBackups()
+        })
         .catch((err) => reportFatal(MAIN_STRINGS[mainLocale()].initialIndex, err))
       if (mainWindow) initAutoUpdate(mainWindow, readSettings().autoUpdate)
     })
@@ -648,19 +766,23 @@ app.on('activate', () => {
 })
 
 let shuttingDown = false
+
+/** Closes the watcher and every DB connection (both workers and main). */
+async function closeAll() {
+  try {
+    await watcher?.close()
+    await Promise.all([indexService?.stop(), queryService?.stop()])
+    db?.close()
+  } catch {
+    /* closing an already-closed handle is fine */
+  }
+  db = null
+}
+
 app.on('before-quit', (event) => {
   if (shuttingDown) return
   // Let both workers close their DB handles cleanly before the process exits.
   shuttingDown = true
   event.preventDefault()
-  void (async () => {
-    try {
-      await watcher?.close()
-      await Promise.all([indexService?.stop(), queryService?.stop()])
-      db?.close()
-    } catch {
-      /* closing an already-closed handle is fine */
-    }
-    app.quit()
-  })()
+  void closeAll().then(() => app.quit())
 })
