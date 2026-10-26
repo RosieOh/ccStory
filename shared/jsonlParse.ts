@@ -12,6 +12,8 @@ export type UsageTokens = {
   outputTokens: number | null
   cacheReadTokens: number | null
   cacheCreationTokens: number | null
+  /** Subset of `cacheCreationTokens` written with the 1-hour TTL (priced higher than 5-minute writes). */
+  cacheCreation1hTokens: number | null
 }
 
 export type ParsedLine = {
@@ -33,6 +35,19 @@ export type ParsedLine = {
   /** Working directory / git branch recorded on the line, when present. */
   cwd: string | null
   gitBranch: string | null
+  /** Line `uuid` — stable across re-indexing, so user data (favorites, tags) can key on it. */
+  uuid: string | null
+  /**
+   * API response identity (`message.id` + `requestId`). Claude Code writes one line per
+   * content block of a response and repeats `usage` on each, so token totals must be
+   * counted once per response, not once per line.
+   */
+  apiMessageId: string | null
+  requestId: string | null
+  /** True when the line is something the human actually typed (not tool output or harness text). */
+  isPrompt: boolean
+  /** The prompt as typed, with IDE/harness wrappers removed; null unless `isPrompt`. */
+  promptText: string | null
 }
 
 function truncate(s: string, max: number): string {
@@ -80,7 +95,26 @@ const OPERATIONAL_TYPES = new Set([
   'session-id',
   'model-info',
   'version-info',
+  'api-request',
+  'api-request-blob',
+  'api-request-shape',
+  'atis-latch',
+  'bridge-session',
+  'history-suppression',
+  'started',
+  'summary',
 ])
+
+/**
+ * Top-level `type` values that are conversation. Any other typed line is Claude Code
+ * bookkeeping — even when it carries a `message` (e.g. `api-request-blob` stores a copy
+ * of an internal API request) — so it must never surface as dialog. Untyped lines are
+ * the legacy `{ role, message }` shape and are classified by content as before.
+ */
+const CONVERSATION_TYPES = new Set(['user', 'assistant', 'system'])
+
+/** Internal payload copies can be huge; keep them inspectable without bloating the index. */
+const MAX_BOOKKEEPING_BODY = 4000
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : ''
@@ -304,6 +338,11 @@ export function extractUsage(usage: unknown): UsageTokens | null {
     outputTokens: toIntOrNull(u.output_tokens),
     cacheReadTokens: toIntOrNull(u.cache_read_input_tokens),
     cacheCreationTokens: toIntOrNull(u.cache_creation_input_tokens),
+    cacheCreation1hTokens: null,
+  }
+  const cc = u.cache_creation
+  if (cc && typeof cc === 'object') {
+    out.cacheCreation1hTokens = toIntOrNull((cc as Record<string, unknown>).ephemeral_1h_input_tokens)
   }
   if (
     out.inputTokens == null &&
@@ -314,6 +353,48 @@ export function extractUsage(usage: unknown): UsageTokens | null {
     return null
   }
   return out
+}
+
+/** Context blocks the IDE/harness attaches to a typed prompt; the prompt is what remains. */
+const PROMPT_WRAPPER_BLOCKS =
+  /<(system-reminder|ide_opened_file|ide_selection|ide_diagnostics|browser_instruction)>[\s\S]*?<\/\1>/g
+
+/** User-role text that the harness wrote, not the human. */
+const NOT_HUMAN_PROMPT = [
+  /^<task-notification>/,
+  /^\[Workflow harness/,
+  /^\[Request interrupted by user/,
+  /^\[SYSTEM NOTIFICATION/,
+  /^\[handback-/,
+  /^This session is being continued from a previous conversation/,
+  /^Caveat: The messages below were generated/,
+  /^<local-command-(caveat|stdout|stderr)>/,
+  /^<bash-(stdout|stderr)>/,
+  /^<fork-boilerplate>/,
+]
+
+/**
+ * The prompt as the human typed it, or null when the text is harness-generated.
+ * Slash commands (`<command-name>`) and `!` shell inputs (`<bash-input>`) are rendered
+ * back into the form the user typed.
+ */
+export function extractPromptText(text: string): string | null {
+  const s = text
+    .replace(PROMPT_WRAPPER_BLOCKS, '')
+    // Pasted text arrives wrapped; the paste itself is what the user typed.
+    .replace(/<\/?pasted_content(?:\s[^>]*)?>/g, '')
+    .trim()
+  if (!s) return null
+  const cmd = s.match(/<command-name>\s*([^<]+?)\s*<\/command-name>/)
+  if (cmd) {
+    const args = s.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1]?.trim() ?? ''
+    const name = cmd[1].startsWith('/') ? cmd[1] : `/${cmd[1]}`
+    return args ? `${name} ${args}` : name
+  }
+  const bash = s.match(/^<bash-input>([\s\S]*?)<\/bash-input>$/)
+  if (bash) return `!${bash[1].trim()}`
+  if (NOT_HUMAN_PROMPT.some((re) => re.test(s))) return null
+  return s
 }
 
 function inferRole(obj: Record<string, unknown>): string {
@@ -482,6 +563,11 @@ export function parseJsonlLine(line: string): ParsedLine | null {
       model: null,
       usage: null,
       isSidechain: false,
+      uuid: null,
+      apiMessageId: null,
+      requestId: null,
+      isPrompt: false,
+      promptText: null,
     }
   }
 
@@ -492,15 +578,22 @@ export function parseJsonlLine(line: string): ParsedLine | null {
   let filePaths: string[] = []
   let model: string | null = null
   let usage: UsageTokens | null = null
+  let apiMessageId: string | null = null
+  const topType = str(obj.type)
+  const conversational = !topType || CONVERSATION_TYPES.has(topType)
 
   if (message && typeof message === 'object') {
-    const m = message as { content?: unknown; model?: unknown; usage?: unknown }
+    const m = message as { content?: unknown; model?: unknown; usage?: unknown; id?: unknown }
     const extracted = extractTextFromContent(m.content)
     text = extracted.text
     contentKinds = extracted.kinds
     filePaths = extracted.filePaths
     if (typeof m.model === 'string' && m.model.trim()) model = m.model
-    usage = extractUsage(m.usage)
+    // Only real responses carry billable usage; a bookkeeping copy must not count twice.
+    if (conversational) {
+      usage = extractUsage(m.usage)
+      if (usage && typeof m.id === 'string' && m.id) apiMessageId = m.id
+    }
   } else if (typeof obj.content !== 'undefined') {
     const extracted = extractTextFromContent(obj.content)
     text = extracted.text
@@ -508,7 +601,6 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     filePaths = extracted.filePaths
   }
 
-  const topType = str(obj.type)
   // A line with no extractable content is bookkeeping, not conversation. Give it
   // a short label (never the raw JSON) and file it under `meta` so the default
   // filters hide it from search results and the transcript.
@@ -520,12 +612,18 @@ export function parseJsonlLine(line: string): ParsedLine | null {
   } else if (!text.trim() && OPERATIONAL_TYPES.has(topType)) {
     text = operationalLabel(obj, topType)
     isBookkeeping = true
+  } else if (!conversational) {
+    // Typed bookkeeping that happens to carry content: keep it readable under its label.
+    text = `${operationalLabel(obj, topType)}\n${truncate(text, MAX_BOOKKEEPING_BODY)}`
+    isBookkeeping = true
   }
+  // Harness-injected user turns (skill bodies, caveats) are flagged `isMeta` by Claude Code.
+  if (obj.isMeta === true) isBookkeeping = true
 
   const rawPreview =
     text.length > 0 ? truncate(text, 160) : truncate(trimmed, 200)
 
-  const role = effectiveRole(rawRole, contentKinds)
+  const role = conversational ? effectiveRole(rawRole, contentKinds) : 'unknown'
   const messageClass = isBookkeeping
     ? 'meta'
     : classifyMessage(role, contentKinds, text || rawPreview)
@@ -533,6 +631,13 @@ export function parseJsonlLine(line: string): ParsedLine | null {
   const isSidechain = obj.isSidechain === true
   const cwd = str(obj.cwd) || null
   const gitBranch = str(obj.gitBranch) || null
+  const promptText =
+    role === 'user' &&
+    !isBookkeeping &&
+    !isSidechain &&
+    (contentKinds.includes('text') || contentKinds.includes('string'))
+      ? extractPromptText(text)
+      : null
 
   return {
     role,
@@ -547,5 +652,10 @@ export function parseJsonlLine(line: string): ParsedLine | null {
     filePaths,
     cwd,
     gitBranch,
+    uuid: str(obj.uuid) || null,
+    apiMessageId,
+    requestId: apiMessageId ? str(obj.requestId) || null : null,
+    isPrompt: promptText != null,
+    promptText,
   }
 }
