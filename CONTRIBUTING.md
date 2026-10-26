@@ -32,6 +32,14 @@ npm test
 npm run postinstall
 ```
 
+## Checking UI changes
+
+Look at the change, in both themes — passing tests say nothing about a screen. For
+pixel-level checks (contrast, colour), launch Electron with `--force-color-profile=srgb`;
+otherwise macOS screenshots carry display-space values and every measurement is off.
+Don't animate anything behind the glass continuously: measure idle CPU if you add motion
+([ADR-0009](docs/decisions/0009-glass-visual-system.md)).
+
 ## Code style
 
 - TypeScript strict mode.
