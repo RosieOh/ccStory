@@ -234,6 +234,7 @@ function mapPlanRows(
     snippet: string
     rank: number
     mtime: number
+    archived: number
   }[],
 ): PlanHit[] {
   return rows.map((r) => ({
@@ -244,6 +245,7 @@ function mapPlanRows(
     snippet: r.snippet,
     rank: r.rank,
     mtime: r.mtime,
+    archived: r.archived === 1,
   }))
 }
 
@@ -276,6 +278,7 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
         pf.file_path,
         pf.title,
         pf.file_mtime_ms AS mtime,
+        pf.archived_at IS NOT NULL AS archived,
         snippet(plan_files_fts, 1, '«', '»', '…', 48) AS snippet,
         bm25(plan_files_fts) AS rank
       FROM plan_files_fts
@@ -298,6 +301,7 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
       pf.file_path,
       pf.title,
       pf.file_mtime_ms AS mtime,
+      pf.archived_at IS NOT NULL AS archived,
       substr(pf.body, 1, 160) AS snippet,
       0 AS rank
     FROM plan_files pf

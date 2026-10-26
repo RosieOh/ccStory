@@ -63,6 +63,9 @@ export function computeStats(db: DbHandle): StatsPayload {
   const archivedSessions = (
     db.prepare(`SELECT COUNT(*) AS c FROM sessions WHERE archived_at IS NOT NULL`).get() as { c: number }
   ).c
+  const archivedPlans = (
+    db.prepare(`SELECT COUNT(*) AS c FROM plan_files WHERE archived_at IS NOT NULL`).get() as { c: number }
+  ).c
   const totalMessages = (db.prepare(`SELECT COUNT(*) AS c FROM messages`).get() as { c: number }).c
   const totalPrompts = (db.prepare(`SELECT COUNT(*) AS c FROM messages WHERE is_prompt = 1`).get() as { c: number }).c
 
@@ -147,6 +150,7 @@ export function computeStats(db: DbHandle): StatsPayload {
     totalProjects,
     totalSessions,
     archivedSessions,
+    archivedPlans,
     totalMessages,
     totalPrompts,
     messagesByRole,
@@ -163,6 +167,7 @@ export const EMPTY_STATS: StatsPayload = {
   totalProjects: 0,
   totalSessions: 0,
   archivedSessions: 0,
+  archivedPlans: 0,
   totalMessages: 0,
   totalPrompts: 0,
   messagesByRole: [],
