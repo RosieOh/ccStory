@@ -12,7 +12,9 @@ export default defineConfig({
   plugins: [
     electron({
       main: {
-        entry: 'electron/main.ts',
+        // The two workers are separate entries: they are loaded by path at runtime
+        // (new Worker(.../indexWorker.cjs)), not imported.
+        entry: ['electron/main.ts', 'electron/indexWorker.ts', 'electron/queryWorker.ts'],
         vite: {
           build: {
             outDir: 'dist-electron',
@@ -21,7 +23,7 @@ export default defineConfig({
               // Emit CommonJS (.cjs): Electron loads the native CJS modules
               // (electron, better-sqlite3) reliably from a CJS main; the ESM
               // loader otherwise crashes preparsing those imports.
-              output: { format: 'cjs', entryFileNames: '[name].cjs' },
+              output: { format: 'cjs', entryFileNames: '[name].cjs', chunkFileNames: '[name]-[hash].cjs' },
             },
           },
         },
