@@ -11,6 +11,9 @@ import type {
 
 export type MatchMode = 'any' | 'all' | 'phrase'
 
+/** Bodies can be megabytes of tool output; hits carry a clamped copy (full text via `messageBody`). */
+export const HIT_BODY_CLAMP = 2000
+
 /**
  * Build an FTS5 query from a raw string.
  * - `phrase`: the whole query is matched as one exact phrase.
@@ -44,54 +47,104 @@ export function buildFtsQuery(raw: string, mode: MatchMode = 'any'): string {
   return terms.join(mode === 'all' ? ' AND ' : ' OR ')
 }
 
-function rowFilters(filters: SearchFilters): { sql: string; params: (string | number)[] } {
+/** `LIKE` pattern for a literal substring (escape char `\`). */
+export function likePattern(q: string): string {
+  return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+}
+
+type Where = { sql: string; params: (string | number)[] }
+
+/** Filters shared by every message query path. `m`, `s`, `p` are the usual aliases. */
+function rowFilters(filters: SearchFilters, opts: { metaOnly?: boolean } = {}): Where {
   const parts: string[] = []
   const params: (string | number)[] = []
-  const excludeMeta = filters.excludeMeta !== false
-  if (excludeMeta) {
-    parts.push(`(COALESCE(m.message_class, 'dialog') != 'meta')`)
+  if (opts.metaOnly) parts.push(`m.message_class = 'meta'`)
+  else if (filters.excludeMeta !== false) parts.push(`m.message_class != 'meta'`)
+  if (filters.excludeSubagents) parts.push(`s.rel_path NOT LIKE '%subagents%'`)
+  if (filters.excludeTools) {
+    parts.push(`m.role != 'tool' AND COALESCE(m.content_kinds, '') NOT LIKE '%"tool_use"%'`)
   }
-  if (filters.excludeSubagents) {
-    parts.push(`(s.rel_path NOT LIKE '%subagents%')`)
+  if (filters.projectId != null) {
+    parts.push(`p.id = ?`)
+    params.push(filters.projectId)
+  }
+  if (filters.role === 'user' || filters.role === 'assistant') {
+    parts.push(`m.role = ?`)
+    params.push(filters.role)
+  }
+  if (filters.tagId != null) {
+    parts.push(`EXISTS (SELECT 1 FROM message_tags mt WHERE mt.msg_key = m.msg_key AND mt.tag_id = ?)`)
+    params.push(filters.tagId)
   }
   if (typeof filters.sinceMs === 'number' && Number.isFinite(filters.sinceMs)) {
-    parts.push(`(m.ts_ms IS NOT NULL AND m.ts_ms >= ?)`)
+    parts.push(`m.ts_ms IS NOT NULL AND m.ts_ms >= ?`)
     params.push(Math.trunc(filters.sinceMs))
   }
   if (typeof filters.untilMs === 'number' && Number.isFinite(filters.untilMs)) {
-    parts.push(`(m.ts_ms IS NOT NULL AND m.ts_ms <= ?)`)
+    parts.push(`m.ts_ms IS NOT NULL AND m.ts_ms <= ?`)
     params.push(Math.trunc(filters.untilMs))
   }
-  if (!parts.length) return { sql: '', params: [] }
-  return { sql: ` AND ${parts.join(' AND ')}`, params }
+  return { sql: parts.length ? parts.map((p) => `(${p})`).join(' AND ') : '1=1', params }
 }
 
 /** ORDER BY clause for a message search; NULL timestamps sort last for time sorts. */
-function messageOrderBy(sort: SortMode | undefined): string {
+function messageOrderBy(sort: SortMode | undefined, relevance: string): string {
   if (sort === 'newest') return 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms DESC, m.id DESC'
   if (sort === 'oldest') return 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms ASC, m.id ASC'
-  return 'ORDER BY rank'
+  return relevance
 }
 
-function mapRows(
-  rows: {
-    message_id: number
-    session_id: number
-    project_id: number
-    project_slug: string
-    project_name: string
-    session_file: string
-    line_index: number
-    role: string
-    body: string
-    snippet: string
-    rank: number
-    message_class: string
-    ts_ms: number | null
-  }[],
-): SearchHit[] {
+const HIT_COLUMNS = `
+  m.id AS message_id,
+  m.msg_key AS msg_key,
+  s.id AS session_id,
+  p.id AS project_id,
+  p.slug AS project_slug,
+  p.display_name AS project_name,
+  s.rel_path AS session_file,
+  m.line_index,
+  m.role,
+  substr(m.body, 1, ${HIT_BODY_CLAMP}) AS body,
+  length(m.body) > ${HIT_BODY_CLAMP} AS body_truncated,
+  m.message_class AS message_class,
+  m.ts_ms AS ts_ms,
+  (SELECT group_concat(mt.tag_id) FROM message_tags mt WHERE mt.msg_key = m.msg_key) AS tag_ids,
+  EXISTS (SELECT 1 FROM favorites f WHERE f.msg_key = m.msg_key) AS is_favorite,
+  s.archived_at IS NOT NULL AS archived`
+
+type HitRow = {
+  message_id: number
+  msg_key: string
+  session_id: number
+  project_id: number
+  project_slug: string
+  project_name: string
+  session_file: string
+  line_index: number
+  role: string
+  body: string
+  body_truncated: number
+  snippet: string
+  rank: number
+  message_class: string
+  ts_ms: number | null
+  tag_ids: string | null
+  is_favorite: number
+  archived: number
+}
+
+export function parseIdList(csv: string | null): number[] {
+  if (!csv) return []
+  return csv
+    .split(',')
+    .map((x) => Number(x))
+    .filter((n) => Number.isInteger(n) && n > 0)
+}
+
+function mapRows(rows: HitRow[]): SearchHit[] {
   return rows.map((r) => ({
     messageId: r.message_id,
+    msgKey: r.msg_key,
     sessionId: r.session_id,
     projectId: r.project_id,
     projectSlug: r.project_slug,
@@ -100,120 +153,77 @@ function mapRows(
     lineIndex: r.line_index,
     role: r.role,
     body: r.body,
+    bodyTruncated: Boolean(r.body_truncated),
     snippet: r.snippet,
     rank: r.rank,
     messageClass: (r.message_class as MessageClass) || 'dialog',
     tsMs: r.ts_ms ?? null,
+    tagIds: parseIdList(r.tag_ids),
+    isFavorite: Boolean(r.is_favorite),
+    archived: Boolean(r.archived),
   }))
 }
 
-export function searchMessages(db: DbHandle, filters: SearchFilters): SearchHit[] {
-  if (!filters.query.trim()) {
-    return []
-  }
-  const limit = Math.min(filters.limit ?? 80, 200)
-  const fts = buildFtsQuery(filters.query, filters.matchMode)
-  const { sql: extraWhere, params: extraParams } = rowFilters(filters)
-
-  const ftsParams: (string | number)[] = []
-  let ftsWhere = '1=1'
-  if (fts) {
-    ftsWhere = `messages_fts MATCH ?`
-    ftsParams.push(fts)
-  }
-  if (filters.projectId != null) {
-    ftsWhere += ` AND p.id = ?`
-    ftsParams.push(filters.projectId)
-  }
-  if (filters.role === 'user' || filters.role === 'assistant') {
-    ftsWhere += ` AND m.role = ?`
-    ftsParams.push(filters.role)
-  }
-  ftsWhere += extraWhere
-  ftsParams.push(...extraParams)
-
-  if (fts) {
-    const ftsSql = `
-    SELECT
-      m.id AS message_id,
-      s.id AS session_id,
-      p.id AS project_id,
-      p.slug AS project_slug,
-      p.display_name AS project_name,
-      s.rel_path AS session_file,
-      m.line_index,
-      m.role,
-      m.body,
-      m.message_class AS message_class,
-      m.ts_ms AS ts_ms,
-      snippet(messages_fts, 0, '«', '»', '…', 32) AS snippet,
-      bm25(messages_fts) AS rank
-    FROM messages_fts
-    JOIN messages m ON m.id = messages_fts.rowid
-    JOIN sessions s ON s.id = m.session_id
-    JOIN projects p ON p.id = s.project_id
-    WHERE ${ftsWhere}
-    ${messageOrderBy(filters.sort)}
-    LIMIT ${limit}
-  `
-    try {
-      const stmt = db.prepare(ftsSql)
-      const rows = stmt.all(...ftsParams) as Parameters<typeof mapRows>[0]
-      return mapRows(rows)
-    } catch {
-      /* LIKE fallback */
-    }
-  }
-
-  const likeParams: (string | number)[] = []
-  let likeWhere = '1=1'
+function likeSearch(db: DbHandle, filters: SearchFilters, limit: number, metaOnly: boolean): SearchHit[] {
   const q = filters.query.trim()
-  if (q.length > 0) {
-    likeWhere = `m.body LIKE ?`
-    const safe = q.replace(/%/g, '').replace(/_/g, '')
-    likeParams.push(`%${safe}%`)
-  }
-  if (filters.projectId != null) {
-    likeWhere += ` AND p.id = ?`
-    likeParams.push(filters.projectId)
-  }
-  if (filters.role === 'user' || filters.role === 'assistant') {
-    likeWhere += ` AND m.role = ?`
-    likeParams.push(filters.role)
-  }
-  likeWhere += extraWhere
-  likeParams.push(...extraParams)
-
-  const likeSql = `
-    SELECT
-      m.id AS message_id,
-      s.id AS session_id,
-      p.id AS project_id,
-      p.slug AS project_slug,
-      p.display_name AS project_name,
-      s.rel_path AS session_file,
-      m.line_index,
-      m.role,
-      m.body,
-      m.message_class AS message_class,
-      m.ts_ms AS ts_ms,
-      substr(m.body, 1, 120) AS snippet,
-      0 AS rank
+  const where = rowFilters(filters, { metaOnly })
+  const textWhere = q ? `m.body LIKE ? ESCAPE '\\'` : '1=1'
+  const sql = `
+    SELECT ${HIT_COLUMNS}, substr(m.body, 1, 120) AS snippet, 0 AS rank
     FROM messages m
     JOIN sessions s ON s.id = m.session_id
     JOIN projects p ON p.id = s.project_id
-    WHERE ${likeWhere}
-    ${filters.sort === 'newest'
-      ? 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms DESC, m.id DESC'
-      : filters.sort === 'oldest'
-        ? 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms ASC, m.id ASC'
-        : 'ORDER BY m.id DESC'}
-    LIMIT ${limit}
-  `
+    WHERE ${textWhere} AND ${where.sql}
+    ${messageOrderBy(filters.sort, 'ORDER BY (m.ts_ms IS NULL) ASC, m.ts_ms DESC, m.id DESC')}
+    LIMIT ${limit}`
+  const params = q ? [likePattern(q), ...where.params] : where.params
+  return mapRows(db.prepare(sql).all(...params) as HitRow[])
+}
 
-  const stmt = db.prepare(likeSql)
-  const rows = stmt.all(...likeParams) as Parameters<typeof mapRows>[0]
-  return mapRows(rows)
+export function searchMessages(db: DbHandle, filters: SearchFilters): SearchHit[] {
+  const limit = Math.min(filters.limit ?? 80, 200)
+  const q = filters.query.trim()
+  if (!q) {
+    // An empty query is only meaningful as "everything with this tag".
+    return filters.tagId != null ? likeSearch(db, filters, limit, false) : []
+  }
+  const fts = buildFtsQuery(q, filters.matchMode)
+  let hits: SearchHit[] = []
+  let ftsOk = false
+  if (fts) {
+    const where = rowFilters(filters)
+    const sql = `
+      SELECT ${HIT_COLUMNS},
+        snippet(messages_fts, 0, '«', '»', '…', 32) AS snippet,
+        bm25(messages_fts) AS rank
+      FROM messages_fts
+      JOIN messages m ON m.id = messages_fts.rowid
+      JOIN sessions s ON s.id = m.session_id
+      JOIN projects p ON p.id = s.project_id
+      WHERE messages_fts MATCH ? AND ${where.sql}
+      ${messageOrderBy(filters.sort, 'ORDER BY rank')}
+      LIMIT ${limit}`
+    try {
+      hits = mapRows(db.prepare(sql).all(fts, ...where.params) as HitRow[])
+      ftsOk = true
+    } catch {
+      /* malformed FTS query → substring fallback below */
+    }
+  }
+  // Token search can't match inside a word ("색인" in "재색인"); when it finds
+  // nothing, fall back to a substring scan so infix queries still work.
+  // A one-character scan of every body finds nothing FTS prefixes would miss.
+  if ((!ftsOk || hits.length === 0) && q.length >= 2) {
+    hits = likeSearch(db, filters, limit, false)
+  }
+  // Bookkeeping lines are not in the FTS index; include them only when asked to.
+  if (filters.excludeMeta === false && hits.length < limit) {
+    const seen = new Set(hits.map((h) => h.messageId))
+    for (const h of likeSearch(db, filters, limit - hits.length, true)) {
+      if (!seen.has(h.messageId)) hits.push(h)
+    }
+  }
+  return hits
 }
 
 function mapPlanRows(
@@ -276,14 +286,12 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
     `
     try {
       const rows = db.prepare(ftsSql).all(fts, ...planDateParams) as Parameters<typeof mapPlanRows>[0]
-      return mapPlanRows(rows)
+      if (rows.length) return mapPlanRows(rows)
     } catch {
       /* LIKE fallback */
     }
   }
 
-  const q = filters.query.trim()
-  const safe = q.replace(/%/g, '').replace(/_/g, '')
   const likeSql = `
     SELECT
       pf.id AS plan_id,
@@ -293,12 +301,12 @@ export function searchPlans(db: DbHandle, filters: SearchFilters): PlanHit[] {
       substr(pf.body, 1, 160) AS snippet,
       0 AS rank
     FROM plan_files pf
-    WHERE pf.title LIKE ? OR pf.body LIKE ?
+    WHERE (pf.title LIKE ? ESCAPE '\\' OR pf.body LIKE ? ESCAPE '\\')${planDateSql}
     ORDER BY pf.file_mtime_ms DESC
     LIMIT ${limit}
   `
-  const pat = `%${safe}%`
-  const rows = db.prepare(likeSql).all(pat, pat) as Parameters<typeof mapPlanRows>[0]
+  const pat = likePattern(filters.query.trim())
+  const rows = db.prepare(likeSql).all(pat, pat, ...planDateParams) as Parameters<typeof mapPlanRows>[0]
   return mapPlanRows(rows)
 }
 
@@ -335,13 +343,13 @@ export function orderedAllScopeHits(
 
 export function unifiedSearch(db: DbHandle, filters: SearchFilters): UnifiedSearchHit[] {
   const scope = filters.scope ?? 'messages'
-  /** `plan_files`에 project_id 없음 — `전체` 검색에서만 플랜을 합치고, 프로젝트가 선택되면 대화만 필터 */
-  const projectScoped = filters.projectId != null
+  /** `plan_files`에 project_id·태그 없음 — 프로젝트나 태그로 좁히면 대화만 검색 */
+  const narrowed = filters.projectId != null || filters.tagId != null
   const messages =
     scope === 'messages' || scope === 'all'
       ? searchMessages(db, filters).map((h): UnifiedSearchHit => ({ ...h, hitType: 'message' }))
       : []
-  const wantPlans = scope === 'plans' || (scope === 'all' && !projectScoped)
+  const wantPlans = scope === 'plans' || (scope === 'all' && !narrowed)
   const plans = wantPlans ? searchPlans(db, filters) : []
 
   if (scope === 'all') {
