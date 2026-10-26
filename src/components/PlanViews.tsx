@@ -3,7 +3,7 @@ import type { PlanHit } from '../../shared/ipc'
 import { BCP47 } from '../../shared/i18n'
 import { Markdown } from '../Markdown'
 import { useI18n, useT } from '../i18n'
-import { GHOST_BTN } from '../ui'
+import { GHOST_BTN, Icon, Snippet } from '../ui'
 import type { PlanPreviewOpen } from '../types'
 
 export function PlanSearchHitCard({
@@ -39,27 +39,16 @@ export function PlanSearchHitCard({
 
   // Same row rhythm as a message hit; plan-ness is carried by one small tag.
   return (
-    <article
-      className={`group border-b border-zinc-800 px-3 py-2.5 transition-colors duration-100 ${
-        active ? 'bg-plan-bg' : 'hover:bg-zinc-900'
-      }`}
-    >
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-600">
-          <span className="rounded-[3px] bg-plan-bg px-1 py-px text-[10px] font-medium uppercase text-plan-text">
-            plan
-          </span>
-          <span className="truncate font-sans font-medium text-zinc-300" title={h.filePath}>
+    <article className="row" data-active={active || undefined}>
+      <div className="flex items-start gap-2">
+        <div className="row-meta flex-1">
+          <span className="badge tone-violet">{t('plan.badge')}</span>
+          <span className="truncate font-semibold text-ink-2" title={h.filePath}>
             {h.title}
           </span>
-          <span className="truncate">{h.filePath}</span>
           <span className="tabular">{new Date(h.mtime).toLocaleDateString(BCP47[locale])}</span>
         </div>
-        <div
-          className={`flex shrink-0 items-center gap-1 transition-opacity duration-100 ${
-            active ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100'
-          }`}
-        >
+        <div className="row-actions">
           <button type="button" className={GHOST_BTN} onClick={() => void copyFull()}>
             {t('action.copy')}
           </button>
@@ -68,9 +57,12 @@ export function PlanSearchHitCard({
           </button>
         </div>
       </div>
-      <p className="truncate text-[12px] text-snippet">« {h.snippet} »</p>
+      <p className="mt-1.5 line-clamp-2 text-[14px] leading-relaxed text-ink-1">
+        <Snippet text={h.snippet} />
+      </p>
+      <p className="mono mt-1 truncate text-ink-3">{h.filePath}</p>
       {expanded && body !== null ? (
-        <div className="mt-2 max-h-64 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3">
+        <div className="mt-3 max-h-72 overflow-auto rounded-2xl bg-well p-4">
           <Markdown>{body}</Markdown>
         </div>
       ) : null}
@@ -120,46 +112,34 @@ export function PlanMarkdownModal({
   }, [open.planId, t])
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
-      role="presentation"
-      onClick={onClose}
-    >
+    <div className="scrim" role="presentation" onClick={onClose}>
       <div
-        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-plan-line bg-zinc-900 shadow-e3"
+        className="dialog glass-solid max-w-3xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plan-preview-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 flex-col gap-2 border-b border-zinc-800 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-6 pb-4 pt-5">
           <div className="min-w-0">
-            <h2 id="plan-preview-title" className="truncate text-sm font-semibold text-white">
+            <span className="badge tone-violet">{t('plan.badge')}</span>
+            <h2 id="plan-preview-title" className="mt-1.5 truncate text-[19px] font-bold tracking-[-0.03em] text-ink-1">
               {open.title}
             </h2>
-            <p className="mt-0.5 font-mono text-[11px] text-zinc-500">{open.filePath}</p>
+            <p className="mono mt-0.5 break-all text-ink-3">{open.filePath}</p>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
-              onClick={() => void window.vault.copyText(body)}
-            >
+          <div className="flex shrink-0 items-center gap-2">
+            <button type="button" className="btn btn-tertiary btn-xs" onClick={() => void window.vault.copyText(body)}>
               {t('action.copyAll')}
             </button>
-            <button
-              ref={closeBtnRef}
-              type="button"
-              className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover"
-              onClick={onClose}
-            >
-              {t('action.close')}
+            <button ref={closeBtnRef} type="button" className="icon-btn" onClick={onClose} aria-label={t('action.close')}>
+              <Icon name="close" />
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          {err && <p className="text-sm text-red-400">{err}</p>}
-          {!err && !body && <p className="text-sm text-zinc-500">{t('common.loading')}</p>}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {err && <p className="alert tone-rose">{err}</p>}
+          {!err && !body && <p className="empty">{t('common.loading')}</p>}
           {!err && body ? <Markdown>{body}</Markdown> : null}
         </div>
       </div>

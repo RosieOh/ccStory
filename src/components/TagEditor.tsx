@@ -37,22 +37,23 @@ export function TagEditor({
   if (!tags.length) return null
 
   return (
-    <div className="mt-1.5 flex flex-wrap gap-1">
-      {tags.map((tag) => (
-        <button
-          key={tag.id}
-          type="button"
-          onClick={() => void toggle(tag.id)}
-          aria-pressed={selected.includes(tag.id)}
-          className={`rounded-[3px] border px-1.5 py-px text-[10px] transition-colors duration-100 ${
-            selected.includes(tag.id)
-              ? 'border-brand-line bg-brand-soft font-medium text-brand-text'
-              : 'border-zinc-800 text-zinc-600 hover:border-brand-line hover:text-zinc-300'
-          }`}
-        >
-          {tag.name}
-        </button>
-      ))}
+    <div className="mt-2 flex flex-wrap gap-1">
+      {tags.map((tag) => {
+        const on = selected.includes(tag.id)
+        return (
+          <button
+            key={tag.id}
+            type="button"
+            onClick={() => void toggle(tag.id)}
+            aria-pressed={on}
+            className={`rounded-full px-2 py-0.5 text-[12px] transition-colors duration-150 ${
+              on ? 'bg-brand font-semibold text-white' : 'bg-well text-ink-3 hover:text-ink-1'
+            }`}
+          >
+            {tag.name}
+          </button>
+        )
+      })}
     </div>
   )
 }

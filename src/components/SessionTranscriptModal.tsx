@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionMessageRow } from '../../shared/ipc'
 import { chatAlignForDialog, chatBubbleShellClass, chatRowFlex } from '../chatBubbleLayout'
+import { Icon, RoleBadge } from '../ui'
 import { Markdown } from '../Markdown'
 import { useT } from '../i18n'
 import { messageClassKey } from '../format'
@@ -24,7 +25,7 @@ function TranscriptBody({ body, markdown }: { body: string; markdown: boolean })
           <Markdown>{text}</Markdown>
         </div>
       ) : (
-        <pre className="max-h-[min(70vh,32rem)] max-w-full overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-300 [overflow-wrap:anywhere]">
+        <pre className="mono max-h-[min(70vh,32rem)] max-w-full overflow-auto whitespace-pre-wrap break-words leading-[1.6] text-ink-2 [overflow-wrap:anywhere]">
           {text}
         </pre>
       )}
@@ -32,7 +33,7 @@ function TranscriptBody({ body, markdown }: { body: string; markdown: boolean })
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 text-[11px] text-brand-text hover:underline"
+          className="mt-1.5 text-[12.5px] font-semibold text-brand-ink hover:underline"
         >
           {expanded
             ? t('action.collapse')
@@ -162,143 +163,110 @@ export function SessionTranscriptModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
-      role="presentation"
-      onClick={onClose}
-    >
+    <div className="scrim" role="presentation" onClick={onClose}>
       <div
-        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-e3"
+        className="dialog glass-solid max-w-4xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="transcript-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 flex-col gap-2 border-b border-zinc-800 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h2 id="transcript-title" className="text-sm font-semibold text-white">
-              {t('transcript.title')}
-            </h2>
-            <p
-              className="mt-1 break-all font-mono text-xs leading-snug text-zinc-200"
-              title={open.sessionFile}
-            >
-              {open.sessionFile}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-zinc-500" title={open.projectLabel}>
-              {open.projectLabel}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              {t('transcript.hint')}
-            </p>
-            {archived && (
-              <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700">
-                {t('transcript.archived')}
+        <div className="flex shrink-0 flex-col gap-3 border-b border-line px-6 pb-4 pt-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 id="transcript-title" className="text-[19px] font-bold tracking-[-0.03em] text-ink-1">
+                {t('transcript.title')}
+              </h2>
+              <p className="mt-0.5 truncate text-[13.5px] text-ink-2" title={open.projectLabel}>
+                {open.projectLabel}
               </p>
-            )}
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
-                <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} />
-                {t('transcript.showMeta')}
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
-                <input
-                  type="checkbox"
-                  checked={showMarkdown}
-                  onChange={(e) => setShowMarkdown(e.target.checked)}
-                />
-                {t('transcript.markdown')}
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
-                <input
-                  type="checkbox"
-                  checked={showToolResults}
-                  onChange={(e) => setShowToolResults(e.target.checked)}
-                />
-                {t('transcript.showTools')}{toolRowCount > 0 ? ` (${toolRowCount})` : ''}
-              </label>
+              <p className="mono mt-0.5 break-all text-ink-3" title={open.sessionFile}>
+                {open.sessionFile}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" className="btn btn-tertiary btn-xs" onClick={() => copyAll()}>
+                {t('action.copyAll')}
+              </button>
+              <button ref={closeBtnRef} type="button" className="icon-btn" onClick={onClose} aria-label={t('action.close')}>
+                <Icon name="close" />
+              </button>
             </div>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors duration-150 ease-out hover:bg-zinc-950 hover:text-zinc-200"
-              onClick={() => copyAll()}
-            >
-              {t('action.copyAll')}
-            </button>
-            <button
-              ref={closeBtnRef}
-              type="button"
-              className="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-brand-fg transition-colors duration-150 ease-out hover:bg-brand-hover"
-              onClick={onClose}
-            >
-              {t('action.close')}
-            </button>
+          {archived && <p className="alert tone-amber">{t('transcript.archived')}</p>}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-ink-2">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input type="checkbox" className="check" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} />
+              {t('transcript.showMeta')}
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                className="check"
+                checked={showMarkdown}
+                onChange={(e) => setShowMarkdown(e.target.checked)}
+              />
+              {t('transcript.markdown')}
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                className="check"
+                checked={showToolResults}
+                onChange={(e) => setShowToolResults(e.target.checked)}
+              />
+              {t('transcript.showTools')}
+              {toolRowCount > 0 ? <span className="text-ink-3 tabular">{toolRowCount.toLocaleString()}</span> : null}
+            </label>
+            <span className="ml-auto text-[12.5px] text-ink-3">{t('transcript.hint')}</span>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          {loadErr && <p className="text-sm text-red-400">{loadErr}</p>}
-          {!loadErr && rows.length === 0 && <p className="text-sm text-zinc-500">{t('common.loading')}</p>}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {loadErr && <p className="alert tone-rose">{loadErr}</p>}
+          {!loadErr && rows.length === 0 && <p className="empty">{t('common.loading')}</p>}
           {(() => {
             const hiddenMeta = showMeta ? 0 : rows.filter((m) => m.messageClass === 'meta').length
             const hiddenTools = showToolResults ? 0 : toolRowCount
             if (!hiddenMeta && !hiddenTools) return null
             const bits = [
-              hiddenMeta ? t('transcript.hidden.meta', { count: hiddenMeta }) : '',
-              hiddenTools ? t('transcript.hidden.tools', { count: hiddenTools }) : '',
+              hiddenMeta ? t('transcript.hidden.meta', { count: hiddenMeta.toLocaleString() }) : '',
+              hiddenTools ? t('transcript.hidden.tools', { count: hiddenTools.toLocaleString() }) : '',
             ].filter(Boolean)
-            return (
-              <p className="mb-2 text-[11px] text-zinc-500">
-                {t('transcript.hidden', { parts: bits.join(' · ') })}
-              </p>
-            )
+            return <p className="mb-4 text-center text-[12.5px] text-ink-3">{t('transcript.hidden', { parts: bits.join(' · ') })}</p>
           })()}
-          {shownRows.map((m) => {
-            const isHi = m.lineIndex === open.highlightLine
-            const align = chatAlignForDialog(m.role, m.messageClass)
-            const isUser = m.role === 'user'
-            const mcKey = messageClassKey(m.messageClass)
-            return (
-              <div key={m.messageId} className={`mb-2 flex w-full min-w-0 ${chatRowFlex(align)}`}>
-                <div
-                  ref={isHi ? highlightRef : undefined}
-                  className={`${chatBubbleShellClass(align, isHi)} ${m.messageClass === 'meta' ? 'opacity-90' : ''}`}
-                  aria-label={`${m.role} · ${m.lineIndex}`}
-                >
-                  <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                    {align !== 'center' ? (
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                          isUser ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-300'
-                        }`}
+          <div className="flex flex-col gap-3">
+            {shownRows.map((m) => {
+              const isHi = m.lineIndex === open.highlightLine
+              const align = chatAlignForDialog(m.role, m.messageClass)
+              const mcKey = messageClassKey(m.messageClass)
+              return (
+                <div key={m.messageId} className={`flex w-full min-w-0 ${chatRowFlex(align)}`}>
+                  <div
+                    ref={isHi ? highlightRef : undefined}
+                    className={chatBubbleShellClass(align)}
+                    data-highlight={isHi || undefined}
+                    aria-label={`${m.role} · ${m.lineIndex}`}
+                  >
+                    <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[12px] text-ink-3">
+                      {align !== 'center' ? <RoleBadge role={m.role} /> : null}
+                      {mcKey ? <span className="badge tone-gray">{t(mcKey)}</span> : null}
+                      <span className="mono">#{m.lineIndex}</span>
+                      <button
+                        type="button"
+                        className="ml-auto font-semibold text-brand-ink hover:underline"
+                        onClick={() => void window.vault.copyText(m.body)}
                       >
-                        {isUser ? t('role.me') : t('role.assistant')}
-                      </span>
-                    ) : null}
-                    <span className="font-mono text-zinc-400">#{m.lineIndex}</span>
-                    <span className={isUser ? 'text-emerald-400' : 'text-zinc-400'}>{m.role}</span>
-                    {mcKey ? (
-                      <span className="rounded bg-zinc-800 px-1 text-[10px] text-amber-200/80">{t(mcKey)}</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="ml-auto text-sky-400 hover:underline"
-                      onClick={() => void window.vault.copyText(m.body)}
-                    >
-                      {t('action.copy')}
-                    </button>
+                        {t('action.copy')}
+                      </button>
+                    </div>
+                    <TranscriptBody body={m.body} markdown={showMarkdown && shouldRenderMarkdown(m)} />
                   </div>
-                  <TranscriptBody
-                    body={m.body}
-                    markdown={showMarkdown && shouldRenderMarkdown(m)}
-                  />
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
           {shownRows.length < visibleRows.length && (
-            <div ref={sentinelRef} className="py-4 text-center font-mono text-[11px] text-zinc-600">
+            <div ref={sentinelRef} className="py-5 text-center text-[12.5px] text-ink-3 tabular">
               {t('transcript.more', {
                 shown: shownRows.length.toLocaleString(),
                 total: visibleRows.length.toLocaleString(),
