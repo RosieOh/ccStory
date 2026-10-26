@@ -1,5 +1,5 @@
 import type { ModelPrice } from '../shared/pricing.js'
-import type { ExportOptions, PromptQuery, SearchFilters, Settings } from '../shared/ipc.js'
+import { BACKUP_KEEP_CHOICES, type ExportOptions, type PromptQuery, type SearchFilters, type Settings } from '../shared/ipc.js'
 
 const MAX_SEARCH_LIMIT = 200
 const MAX_EXPORT_MESSAGE_IDS = 5000
@@ -133,6 +133,7 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<Settings> {
   const out: Partial<Settings> = {}
   if (o.archiveMode === 'keep' || o.archiveMode === 'mirror') out.archiveMode = o.archiveMode
   if (typeof o.autoUpdate === 'boolean') out.autoUpdate = o.autoUpdate
+  if ((BACKUP_KEEP_CHOICES as readonly unknown[]).includes(o.backupKeep)) out.backupKeep = o.backupKeep as number
   return out
 }
 
