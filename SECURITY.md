@@ -14,4 +14,4 @@ If you believe you have found a security issue (e.g. IPC abuse from a compromise
 
 ## Supply chain
 
-Follow normal practices: verify `package-lock.json` / lockfile, pin Electron and native deps when possible, and rebuild after upgrades (`npm run postinstall` for `better-sqlite3`).
+Follow normal practices: verify `package-lock.json` / lockfile and keep the runtime on a supported line. Electron patches only its latest three major versions, so Dependabot (`.github/dependabot.yml`) checks `electron`, `electron-updater` and `better-sqlite3` monthly; other dependencies are upgraded deliberately. `npm audit` should report nothing for production dependencies.
