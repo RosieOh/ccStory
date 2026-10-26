@@ -11,7 +11,16 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # Manual runs default to a dry run: installers are built on all three OSes but nothing
+  # is published, and they are not uploaded as artifacts either (on a public repo an
+  # artifact is a download anyone can fetch).
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'never = dry run (build only), always = publish to a draft GitHub Release'
+        type: choice
+        options: [never, always]
+        default: never
 
 permissions:
   contents: write
@@ -38,7 +47,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Install scripts run here so the Electron binary is downloaded for packaging.
+      # A full install (with scripts) on the machines that package.
       - name: Install dependencies
         run: npm ci
 
@@ -53,8 +62,8 @@ jobs:
       - name: Build app bundles
         run: npx vite build
 
-      - name: Package and publish
-        run: npx electron-builder --${{ matrix.platform }} --publish always
+      - name: Package (and publish on a tag)
+        run: npx electron-builder --${{ matrix.platform }} --publish ${{ github.event_name == 'push' && 'always' || inputs.publish }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS: Developer ID cert + notarization (Apple Developer Program).
@@ -64,7 +73,12 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: List installers
+        shell: bash
+        run: ls -la release | grep -vE '^(d|total)' || true
+
       - name: Upload artifacts
+        if: github.event_name == 'push' || inputs.publish == 'always'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-installers
