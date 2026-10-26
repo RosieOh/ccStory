@@ -129,7 +129,8 @@ export function StatsTab({ stats }: { stats: StatsPayload | null }) {
                   )}
                   <CostPanel byModel={stats.tokensByModel} />
                   <section className="md:col-span-2">
-                    <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('stats.topWords')}</h3>
+                    <h3 className="text-xs font-medium text-zinc-500">{t('stats.topWords')}</h3>
+                    <p className="mb-2 text-[11px] text-zinc-500">{t('stats.topWords.desc')}</p>
                     <div className="flex flex-wrap gap-2">
                       {stats.topTokens.map((tok) => (
                         <span
@@ -137,7 +138,7 @@ export function StatsTab({ stats }: { stats: StatsPayload | null }) {
                           className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300"
                         >
                           {tok.token}{' '}
-                          <span className="text-zinc-500">×{tok.count}</span>
+                          <span className="tabular-nums text-zinc-500">{tok.count.toLocaleString()}</span>
                         </span>
                       ))}
                     </div>
