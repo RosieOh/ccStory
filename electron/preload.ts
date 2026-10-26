@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { ModelPrice } from '../shared/pricing.js'
 import { IPC } from '../shared/ipc.js'
 import type {
+  BackupInfo,
+  BackupResult,
   ExportOptions,
   ExportSaveResult,
   FavoriteRow,
@@ -14,6 +16,7 @@ import type {
   PromptRow,
   RecentSessionRow,
   ReindexResult,
+  RestoreResult,
   SearchFilters,
   SessionInfo,
   SessionMessageRow,
@@ -70,6 +73,10 @@ contextBridge.exposeInMainWorld('vault', {
   settingsGet: (): Promise<SettingsInfo> => ipcRenderer.invoke(IPC.settingsGet),
   settingsSet: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke(IPC.settingsSet, patch),
   archivePurge: (): Promise<number> => ipcRenderer.invoke(IPC.archivePurge),
+  backupsList: (): Promise<BackupInfo> => ipcRenderer.invoke(IPC.backupsList),
+  backupCreate: (): Promise<BackupResult> => ipcRenderer.invoke(IPC.backupCreate),
+  backupRestore: (name: string): Promise<RestoreResult> => ipcRenderer.invoke(IPC.backupRestore, name),
+  backupsReveal: (): Promise<void> => ipcRenderer.invoke(IPC.backupsReveal),
   updateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateStatus),
   updateCheck: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC.updateCheck),
   updateInstall: (): Promise<void> => ipcRenderer.invoke(IPC.updateInstall),
