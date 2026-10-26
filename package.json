@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test:db": "vitest run -c vitest.db.config.ts",
+    "test:e2e": "node tests/e2e/smoke.mjs",
     "bench": "tsx scripts/bench-search.ts"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "globals": "^15.14.0",
+    "playwright-core": "^1.64.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "tsx": "^4.23.15",
