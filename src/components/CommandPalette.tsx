@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../i18n'
+import { Icon } from '../ui'
 import type { Command } from '../types'
 
 export function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
@@ -44,30 +45,29 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-scrim p-4 pt-[12vh]"
-      role="presentation"
-      onClick={onClose}
-    >
+    <div className="scrim !items-start pt-[12vh]" role="presentation" onClick={onClose}>
       <div
-        className="w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-e3"
+        className="dialog glass-solid max-w-xl"
         role="dialog"
         aria-modal="true"
         aria-label={t('app.palette')}
         onClick={(e) => e.stopPropagation()}
       >
-        <input
-          ref={inputRef}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={onKey}
-          placeholder={t('palette.placeholder')}
-          className="w-full border-b border-zinc-800 bg-transparent px-4 py-3 text-sm text-white outline-none"
-        />
-        <ul className="max-h-80 overflow-y-auto py-1">
-          {filtered.length === 0 && (
-            <li className="px-4 py-3 text-xs text-zinc-500">{t('palette.empty')}</li>
-          )}
+        <div className="flex items-center gap-3 border-b border-line px-5">
+          <Icon name="search" className="h-[18px] w-[18px] text-ink-3" />
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onKey}
+            placeholder={t('palette.placeholder')}
+            aria-label={t('app.palette')}
+            className="h-14 min-w-0 flex-1 bg-transparent text-[15px] text-ink-1 outline-none placeholder:text-ink-4"
+          />
+          <span className="kbd">Esc</span>
+        </div>
+        <ul className="max-h-[22rem] overflow-y-auto p-2">
+          {filtered.length === 0 && <li className="empty !py-8">{t('palette.empty')}</li>}
           {filtered.map((c, i) => (
             <li key={c.id}>
               <button
@@ -77,12 +77,11 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
                   c.run()
                   onClose()
                 }}
-                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${
-                  i === active ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-900'
-                }`}
+                className="menu-item !py-2.5"
+                data-active={i === active || undefined}
               >
-                <span className="truncate">{c.label}</span>
-                {c.hint ? <span className="ml-3 shrink-0 text-[10px] text-zinc-500">{c.hint}</span> : null}
+                <span className="min-w-0 flex-1 truncate">{c.label}</span>
+                {c.hint ? <span className="badge tone-gray">{c.hint}</span> : null}
               </button>
             </li>
           ))}
