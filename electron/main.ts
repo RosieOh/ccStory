@@ -32,6 +32,7 @@ import {
   listTags,
   messageBody,
   purgeArchived,
+  recordAppOpen,
   recentSessions,
   removeFavorite,
   renameTag,
@@ -39,6 +40,7 @@ import {
   setMessageTags,
 } from './queries.js'
 import { DEFAULT_BACKUP_KEEP, IPC } from '../shared/ipc.js'
+import { localDay } from '../shared/appOpens.js'
 import type {
   BackupInfo,
   BackupReason,
@@ -184,6 +186,22 @@ function readSettings(): Settings {
     archiveMode: db ? archiveModeOf(db) : 'keep',
     autoUpdate: db ? getSetting(db, 'autoUpdate') !== 'off' : true,
     backupKeep: db ? backupKeepOf(db) : DEFAULT_BACKUP_KEEP,
+  }
+}
+
+let lastOpenDay = ''
+/**
+ * Marks today as a day the app was used (launch, or focus on a later day: the window
+ * often stays open for days). Only the local date is stored, for the Stats tab.
+ */
+function noteAppOpen() {
+  const day = localDay(new Date())
+  if (!db || day === lastOpenDay) return
+  lastOpenDay = day
+  try {
+    recordAppOpen(db, day)
+  } catch (err) {
+    console.error('[vault] could not record app open:', err)
   }
 }
 
@@ -728,6 +746,8 @@ if (!app.requestSingleInstanceLock()) {
     plansRoot = defaultClaudePlansRoot()
     const opened = openVaultDbWithRecovery(vaultDbPath(), backupsDir())
     db = opened.db
+    noteAppOpen()
+    app.on('browser-window-focus', noteAppOpen)
     const dbFile = vaultDbPath()
     queryService = new QueryService(dbFile)
     indexService = new IndexService({
