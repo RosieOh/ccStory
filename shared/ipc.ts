@@ -33,6 +33,10 @@ export const IPC = {
   settingsGet: 'vault:settingsGet',
   settingsSet: 'vault:settingsSet',
   archivePurge: 'vault:archivePurge',
+  backupsList: 'vault:backupsList',
+  backupCreate: 'vault:backupCreate',
+  backupRestore: 'vault:backupRestore',
+  backupsReveal: 'vault:backupsReveal',
   updateCheck: 'vault:updateCheck',
   updateInstall: 'vault:updateInstall',
   updateStatus: 'vault:updateStatus',
@@ -312,6 +316,8 @@ export type Settings = {
   archiveMode: ArchiveMode
   /** Check GitHub Releases for updates (the app's only network request). */
   autoUpdate: boolean
+  /** How many DB snapshots to keep (0 turns automatic backups off). */
+  backupKeep: number
 }
 
 export type SettingsInfo = Settings & {
@@ -321,3 +327,32 @@ export type SettingsInfo = Settings & {
 }
 
 export type ExportSaveResult = { saved: boolean; path?: string; error?: string }
+
+/** Allowed values for `Settings.backupKeep`; 0 turns automatic backups off. */
+export const BACKUP_KEEP_CHOICES = [0, 1, 3, 7] as const
+export const DEFAULT_BACKUP_KEEP = 3
+
+/** Why a snapshot was taken: on schedule, by hand, or right before a destructive step. */
+export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'pre-purge' | 'pre-restore'
+
+export type BackupFile = {
+  /** File name in the backup folder; also the id the renderer passes back. */
+  name: string
+  createdAt: number
+  reason: BackupReason
+  sizeBytes: number
+}
+
+export type BackupInfo = {
+  dir: string
+  keep: number
+  items: BackupFile[]
+  totalBytes: number
+}
+
+export type BackupResult =
+  | { ok: true; file: BackupFile }
+  | { ok: false; error: 'disk' | 'failed'; message?: string }
+
+/** A successful restore relaunches the app, so only failures come back. */
+export type RestoreResult = { ok: false; error: 'invalid' | 'newer-schema' | 'missing' | 'failed'; message?: string }
