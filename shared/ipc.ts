@@ -286,6 +286,8 @@ export type StatsPayload = {
   tokensByModel: ModelTokenRow[]
   /** True when `activityByDay` counts prompts by timestamp rather than session mtime. */
   activityFromTimestamps: boolean
+  /** Local days (`YYYY-MM-DD`, oldest first) the app was opened in the last ~two months. */
+  appOpenDays: string[]
 }
 
 export type ReindexResult = {

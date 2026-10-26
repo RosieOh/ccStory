@@ -137,6 +137,12 @@ export function computeStats(db: DbHandle): StatsPayload {
         )
         .all() as { day: string; count: number }[])
 
+  const appOpenDays = (
+    db
+      .prepare(`SELECT day FROM app_opens WHERE day >= date('now', 'localtime', '-62 days') ORDER BY day`)
+      .all() as { day: string }[]
+  ).map((r) => r.day)
+
   return {
     totalProjects,
     totalSessions,
@@ -149,6 +155,7 @@ export function computeStats(db: DbHandle): StatsPayload {
     tokenTotals,
     tokensByModel,
     activityFromTimestamps,
+    appOpenDays,
   }
 }
 
@@ -164,4 +171,5 @@ export const EMPTY_STATS: StatsPayload = {
   tokenTotals: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
   tokensByModel: [],
   activityFromTimestamps: false,
+  appOpenDays: [],
 }

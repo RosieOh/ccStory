@@ -218,3 +218,8 @@ export function purgeArchived(db: DbHandle): number {
   db.prepare(`DELETE FROM projects WHERE archived_at IS NOT NULL`).run()
   return n
 }
+
+/** Records that the app was used on `day` (local `YYYY-MM-DD`); once per day. */
+export function recordAppOpen(db: DbHandle, day: string): void {
+  db.prepare(`INSERT OR IGNORE INTO app_opens (day) VALUES (?)`).run(day)
+}
