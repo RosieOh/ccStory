@@ -35,4 +35,4 @@ This repository is the **Claude Vault** Electron + React app. Use this file as a
 - Search problems → `electron/search.ts` and the FTS view/triggers in `electron/db.ts`.
 - Missing or misclassified messages → `shared/jsonlParse.ts` (Codex: `shared/codexParse.ts`) and a fixture line in a test or PoC output.
 - Indexing, archive, live updates → `electron/indexer.ts`, `electron/indexWorker.ts`, tests in `tests/db/`.
-- UI regressions → `src/App.tsx` (shell + search) or the tab in `src/tabs/`.
+- UI regressions → `src/App.tsx` (shell + search) or the tab in `src/tabs/`. Colours, glass and component classes are tokens in `src/index.css` ([ADR-0009](docs/decisions/0009-glass-visual-system.md)) — don't add raw Tailwind palette colours. Korean copy is 해요체; "색인" is the term for indexing. Check UI changes on a screenshot in both themes.
