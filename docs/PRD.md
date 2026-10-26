@@ -33,7 +33,7 @@ Tagline: *Your Claude conversations. Instantly searchable. Never lost.*
 5. **Understand it.** Usage and estimated cost per model — useful, but secondary and
    only worth showing if correct.
 
-## Scope (v0.4.0)
+## Scope (v0.4.0 – v0.5.0)
 
 | Priority | Feature | Status |
 |----------|---------|--------|
