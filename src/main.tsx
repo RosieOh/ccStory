@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { ErrorBoundary } from './ErrorBoundary'
 import { I18nProvider } from './i18n'
+// Pretendard (SIL OFL 1.1) is bundled, not fetched: the CSP allows fonts from the app only.
+import 'pretendard/dist/web/variable/pretendardvariable.css'
 import './index.css'
 
 // An IPC call that rejects (e.g. the DB was swapped out mid-session) would
