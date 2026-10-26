@@ -10,6 +10,7 @@ export function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
   const [name, setName] = useState('')
   const [body, setBody] = useState('')
   const [values, setValues] = useState<Record<string, string>>({})
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const load = useCallback(async () => {
     const list = await window.vault.templatesList()
@@ -53,8 +54,20 @@ export function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
     }
   }
 
+  // Deleting asks twice: the second click within a few seconds confirms.
+  useEffect(() => {
+    if (!confirmDelete) return
+    const timer = setTimeout(() => setConfirmDelete(false), 4000)
+    return () => clearTimeout(timer)
+  }, [confirmDelete])
+
   const remove = async () => {
     if (selectedId == null) return
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    setConfirmDelete(false)
     await window.vault.templateDelete(selectedId)
     onStatus(t('toast.templateDeleted'))
     startNew()
@@ -67,104 +80,89 @@ export function TemplatesTab({ onStatus }: { onStatus: (s: string) => void }) {
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="w-64 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
-        <button
-          type="button"
-          onClick={startNew}
-          className="mb-3 w-full rounded-md bg-emerald-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
-        >
-          {t('templates.new')}
-        </button>
-        {templates.length === 0 && (
-          <p className="text-xs text-zinc-500">
-            {t('templates.empty')}
-          </p>
-        )}
-        <ul className="space-y-1">
-          {templates.map((tpl) => (
-            <li key={tpl.id}>
-              <button
-                type="button"
-                onClick={() => openTemplate(tpl)}
-                className={`w-full truncate rounded px-2 py-1.5 text-left text-xs ${
-                  selectedId === tpl.id
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-300 hover:bg-zinc-900'
-                }`}
-                title={tpl.name}
-              >
-                {tpl.name || t('templates.untitled')}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="min-w-0 flex-1 overflow-y-auto p-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('templates.name')}
-            className="min-w-[200px] flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white"
-          />
-          <button
-            type="button"
-            onClick={() => void save()}
-            className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
-          >
-            {t('templates.save')}
-          </button>
-          {selectedId != null && (
-            <button
-              type="button"
-              onClick={() => void remove()}
-              className="rounded-md border border-red-800/70 px-3 py-2 text-sm text-red-200 hover:bg-red-950/40"
-            >
-              {t('templates.delete')}
-            </button>
-          )}
-        </div>
-        <label className="mb-1 block text-xs text-zinc-500">
-          {t('templates.bodyLabel', { token: '{{…}}' })}
-        </label>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder={t('templates.bodyPlaceholder')}
-          className="h-48 w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-xs text-zinc-100"
-        />
-        {variables.length > 0 && (
-          <section className="mt-4">
-            <h3 className="mb-2 text-xs font-medium text-zinc-500">{t('templates.variables')}</h3>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {variables.map((v) => (
-                <label key={v} className="flex flex-col gap-1 text-xs text-zinc-400">
-                  {v}
-                  <input
-                    value={values[v] ?? ''}
-                    onChange={(e) => setValues((prev) => ({ ...prev, [v]: e.target.value }))}
-                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-sm text-white"
-                  />
-                </label>
-              ))}
-            </div>
-          </section>
-        )}
-        <section className="mt-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">{t('templates.preview')}</h3>
-            <button
-              type="button"
-              onClick={copyRendered}
-              className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
-            >
-              {t('templates.copyFilled')}
+    <div className="page page-fill">
+      <div className="flex min-h-0 flex-1 gap-4">
+        <section className="list glass flex w-72 shrink-0 flex-col">
+          <div className="p-2">
+            <button type="button" onClick={startNew} className="btn btn-primary w-full">
+              {t('templates.new')}
             </button>
           </div>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200">
-            {rendered || t('templates.previewEmpty')}
-          </pre>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {templates.length === 0 && <p className="px-3 py-4 text-[13px] leading-relaxed text-ink-3">{t('templates.empty')}</p>}
+            {templates.map((tpl) => (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => openTemplate(tpl)}
+                className="row"
+                aria-current={selectedId === tpl.id ? 'true' : undefined}
+                title={tpl.name}
+              >
+                <span className={`block truncate font-semibold ${selectedId === tpl.id ? 'text-brand-ink' : 'text-ink-1'}`}>
+                  {tpl.name || t('templates.untitled')}
+                </span>
+                <span className="mt-0.5 block truncate text-[12.5px] text-ink-3">{tpl.body.replace(/\s+/g, ' ')}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="glass panel flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('templates.name')}
+              aria-label={t('templates.name')}
+              className="input min-w-[200px] flex-1 !text-[15px] font-semibold"
+            />
+            <button type="button" onClick={() => void save()} className="btn btn-primary">
+              {t('templates.save')}
+            </button>
+            {selectedId != null && (
+              <button type="button" onClick={() => void remove()} className="btn btn-danger">
+                {confirmDelete ? t('templates.confirmDelete') : t('templates.delete')}
+              </button>
+            )}
+          </div>
+          <label className="flex flex-col gap-2">
+            <span className="eyebrow">{t('templates.bodyLabel', { token: '{{…}}' })}</span>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={t('templates.bodyPlaceholder')}
+              className="input mono h-48 resize-y !p-3 leading-relaxed"
+            />
+          </label>
+          {variables.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="eyebrow">{t('templates.variables')}</span>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {variables.map((v) => (
+                  <label key={v} className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-2">
+                    {v}
+                    <input
+                      value={values[v] ?? ''}
+                      onChange={(e) => setValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                      className="input"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="eyebrow">{t('templates.preview')}</span>
+              <button type="button" onClick={copyRendered} className="btn btn-secondary btn-xs" disabled={!rendered}>
+                {t('templates.copyFilled')}
+              </button>
+            </div>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-well p-4 font-sans text-[13.5px] leading-relaxed text-ink-1">
+              {rendered || t('templates.previewEmpty')}
+            </pre>
+          </div>
         </section>
       </div>
     </div>
