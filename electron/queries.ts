@@ -212,11 +212,15 @@ export function setMessageTags(db: DbHandle, msgKey: string, tagIds: number[]): 
   })()
 }
 
-/** Explicitly drop sessions/projects kept only as archives. Favorites keep their snapshots. */
+/**
+ * Explicitly drop sessions/projects/plans kept only as archives; returns how many sessions
+ * and plans went. Favorites keep their snapshots.
+ */
 export function purgeArchived(db: DbHandle): number {
-  const n = db.prepare(`DELETE FROM sessions WHERE archived_at IS NOT NULL`).run().changes
+  const sessions = db.prepare(`DELETE FROM sessions WHERE archived_at IS NOT NULL`).run().changes
   db.prepare(`DELETE FROM projects WHERE archived_at IS NOT NULL`).run()
-  return n
+  const plans = db.prepare(`DELETE FROM plan_files WHERE archived_at IS NOT NULL`).run().changes
+  return sessions + plans
 }
 
 /** Records that the app was used on `day` (local `YYYY-MM-DD`); once per day. */

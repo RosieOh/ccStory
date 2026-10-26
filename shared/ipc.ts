@@ -150,6 +150,8 @@ export type PlanHit = {
   snippet: string
   rank: number
   mtime: number
+  /** The plan file is gone; this copy lives only in the vault. */
+  archived: boolean
 }
 
 export type MessageHit = SearchHit & { hitType: 'message' }
@@ -161,6 +163,7 @@ export type PlanListRow = {
   filePath: string
   title: string
   mtime: number
+  archived: boolean
 }
 
 export type MatchMode = 'any' | 'all' | 'phrase'
@@ -274,6 +277,8 @@ export type StatsPayload = {
   totalProjects: number
   totalSessions: number
   archivedSessions: number
+  /** Plans kept after their file was deleted. */
+  archivedPlans: number
   totalMessages: number
   totalPrompts: number
   messagesByRole: { role: string; count: number }[]
@@ -326,6 +331,8 @@ export type SettingsInfo = Settings & {
   dbPath: string
   dbSizeBytes: number
   claudeHome: string
+  /** Plans kept after their file was deleted (sessions come with the project list). */
+  archivedPlans: number
 }
 
 export type ExportSaveResult = { saved: boolean; path?: string; error?: string }

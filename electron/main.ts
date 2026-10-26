@@ -273,16 +273,17 @@ function registerIpc() {
     db ? queryService!.search<UnifiedSearchHit[]>(sanitizeSearchFilters(raw)) : [],
   )
 
-  ipcMain.handle(IPC.plansList, async () => {
+  ipcMain.handle(IPC.plansList, async (): Promise<PlanListRow[]> => {
     if (!db) return []
-    return db
+    const rows = db
       .prepare(
-        `SELECT id, file_path AS filePath, title, file_mtime_ms AS mtime
+        `SELECT id, file_path AS filePath, title, file_mtime_ms AS mtime, archived_at IS NOT NULL AS archived
          FROM plan_files
          ORDER BY file_mtime_ms DESC
          LIMIT 40`,
       )
-      .all() as PlanListRow[]
+      .all() as (Omit<PlanListRow, 'archived'> & { archived: number })[]
+    return rows.map((r) => ({ ...r, archived: r.archived === 1 }))
   })
 
   ipcMain.handle(IPC.planBody, async (_e, raw: unknown) => {
@@ -437,6 +438,9 @@ function registerIpc() {
       dbPath,
       dbSizeBytes: fileSize(dbPath) + fileSize(`${dbPath}-wal`),
       claudeHome: claudeHomeDir(),
+      archivedPlans: db
+        ? (db.prepare(`SELECT COUNT(*) AS c FROM plan_files WHERE archived_at IS NOT NULL`).get() as { c: number }).c
+        : 0,
     }
   })
 
