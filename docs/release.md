@@ -18,10 +18,11 @@ git push --follow-tags     # push the commit and the tag
 
 What the workflow does per OS:
 
-1. `npm ci` (native deps rebuild for Electron's ABI via `install-app-deps`).
+1. `npm ci`.
 2. `npm run typecheck && npm run lint && npm test && npm run test:db` — a broken tag never ships.
-3. `electron-builder --<platform> --publish always` — uploads installers and the
-   `latest*.yml` update metadata to the Release.
+3. `vite build` — the renderer, main, preload and worker bundles (`dist/`, `dist-electron/`).
+4. `electron-builder --<platform> --publish always` — packages those bundles, uploads
+   installers and the `latest*.yml` update metadata to the Release.
 
 The Release is created as a **draft**; review it and hit publish. `latest-mac.yml`
 / `latest.yml` must be attached (they are, by the step above) or auto-update
