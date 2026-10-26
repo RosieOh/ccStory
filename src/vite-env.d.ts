@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 import type {
+  BackupInfo,
+  BackupResult,
   ExportOptions,
   ExportSaveResult,
   FavoriteRow,
@@ -13,6 +15,7 @@ import type {
   PromptRow,
   RecentSessionRow,
   ReindexResult,
+  RestoreResult,
   SearchFilters,
   SessionInfo,
   SessionMessageRow,
@@ -62,6 +65,12 @@ export type VaultApi = {
   settingsGet: () => Promise<SettingsInfo>
   settingsSet: (patch: Partial<Settings>) => Promise<Settings>
   archivePurge: () => Promise<number>
+  backupsList: () => Promise<BackupInfo>
+  /** Snapshot now (on the index worker, behind any running scan). */
+  backupCreate: () => Promise<BackupResult>
+  /** Swaps the backup in and relaunches the app; resolves only when it could not. */
+  backupRestore: (name: string) => Promise<RestoreResult>
+  backupsReveal: () => Promise<void>
   updateStatus: () => Promise<UpdateStatus>
   updateCheck: () => Promise<UpdateStatus>
   updateInstall: () => Promise<void>
