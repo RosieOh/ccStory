@@ -2,28 +2,78 @@
 
 ## JSONL schema drift
 
-Claude Code may change JSONL field names or `content` shapes. The parser is defensive, but unknown shapes may produce empty or generic bodies. **Mitigation:** extend `shared/jsonlParse.ts`, bump `meta.schema_version` / migration notes, document new kinds here.
+Claude Code changes JSONL line types and `content` shapes without notice (a 2026-10 audit
+found a dozen new top-level types). The parser treats any typed line other than
+`user` / `assistant` / `system` as bookkeeping, so new types degrade to hidden meta rows
+rather than polluting search — but genuinely new *conversation* shapes may still parse as
+empty or generic bodies. **Mitigation:** run `npm run poc`, extend `shared/jsonlParse.ts`,
+and use Settings → "re-read all files" (or `requestFullReparse` in a migration). Updates
+matter for this reason (ADR-0005).
 
-## Session layout assumptions
+## Prompt detection is heuristic
 
-Claude Code layout varies by version. This app walks shallow `*.jsonl` trees and reads `sessions-index.json` when present. If a future version stores only opaque blobs outside these patterns, extend `electron/claudeLayout.ts` (see v2 multi-tool support in [PRD.md](PRD.md)).
+"My prompts" excludes text the harness writes into user turns using known markers
+(`<task-notification>`, `[Request interrupted…`, continuation summaries, IDE context
+blocks, `isMeta`). A new harness marker shows up as a prompt until it is added to
+`NOT_HUMAN_PROMPT`.
 
-## Large files
+## Archive growth
 
-Very large JSONL files are read synchronously during indexing. Expect temporary UI stall on huge sessions; future work: streaming parser + background jobs.
+In Keep mode the vault DB only grows: about 850 MB for 5.5 GB of transcripts on the
+audited machine (parsed text, FTS index, metadata). Settings shows the size; "Delete all
+archived" removes archived sessions (favorites keep their snapshots).
+
+## Plans are not archived
+
+`~/.claude/plans` rows follow their files (deleted when the file is). Only session
+transcripts are archived.
+
+## Codex CLI support is best effort
+
+The Codex rollout format is undocumented; the adapter maps `response_item` messages, tool
+calls/outputs and `token_usage_record` usage, and groups sessions by `session_meta.cwd`.
+Codex files are re-read from the start on change (the format is stateful). OpenAI model
+prices are not seeded — those models show as "unpriced" until you add rows.
+
+## Search
+
+- FTS5 `unicode61` tokens with prefix matching; matches inside a word use a slower
+  substring scan that only runs when token search finds nothing (ADR-0008).
+- Bookkeeping lines are not in the FTS index; "include meta" adds them with a substring
+  scan.
+
+## Cost estimates
+
+Estimates from logged token counts × an editable price table dated `PRICES_AS_OF`. Not
+modeled: Haiku 5.5's >100K-token prompt tier, batch/priority discounts, fast mode, and
+subscription plans (usage under a subscription is not billed per token, so the figure is
+an API-rate equivalent, not what you paid).
 
 ## Platform
 
-Primary target is **macOS**. Electron and path logic should work on Windows/Linux, but paths like `~/.claude/projects` and packaging are not fully validated on those OSes yet.
+Primary target is **macOS**. Electron and path logic should work on Windows/Linux, but
+packaging and the worker threads are not validated there yet.
+
+## Running from inside VS Code
+
+VS Code's extension host exports `ELECTRON_RUN_AS_NODE=1`. A terminal or tool launched
+from it that starts Electron will start it as plain Node instead of the app. Unset the
+variable (`env -u ELECTRON_RUN_AS_NODE npm run dev`) if the window never appears.
 
 ## Legal / ToS (high level, not legal advice)
 
-Local read of your own files is the design center. Monitor upstream terms for Claude Code storage locations and acceptable use. This app does not reverse engineer network APIs.
+Local read of your own files is the design center. Monitor upstream terms for Claude Code
+storage locations and acceptable use. This app does not reverse engineer network APIs.
 
 ## Code signing
 
-Release builds may be unsigned by default; macOS Gatekeeper may require explicit approval to open the DMG.
+Release builds are unsigned until signing secrets exist (see `docs/release.md`); macOS
+Gatekeeper requires explicit approval, and auto-update does not work unsigned.
 
-## Unit tests vs `better-sqlite3`
+## Native module and tests
 
-`better-sqlite3` is built for **Electron’s Node ABI** during `npm run build` / `postinstall`. `npm test` (Vitest) runs under the **system Node** binary, so opening a real SQLite DB in tests can fail with NODE_MODULE_VERSION mismatch. Parser and pure search-merge tests avoid loading the native module; full DB integration tests would need a rebuild target or a separate in-process Electron test runner.
+`better-sqlite3` is built for **Electron's ABI** by `postinstall`. `npm test` (pure unit
+tests) runs anywhere; `npm run test:db` runs the SQLite tests inside Electron in Node mode
+(or under plain Node after `npm rebuild better-sqlite3`, as CI does). On Node 24 there is
+no prebuilt binary for the pinned better-sqlite3, so the Electron path is the reliable one
+locally.

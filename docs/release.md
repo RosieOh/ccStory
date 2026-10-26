@@ -19,7 +19,7 @@ git push --follow-tags     # push the commit and the tag
 What the workflow does per OS:
 
 1. `npm ci` (native deps rebuild for Electron's ABI via `install-app-deps`).
-2. `npm run typecheck && npm run lint && npm test` — a broken tag never ships.
+2. `npm run typecheck && npm run lint && npm test && npm run test:db` — a broken tag never ships.
 3. `electron-builder --<platform> --publish always` — uploads installers and the
    `latest*.yml` update metadata to the Release.
 
@@ -53,6 +53,11 @@ Artifacts (in `release/`), named `${productName}-${version}-${os}-${arch}.${ext}
 - Windows — NSIS `.exe`
 - Linux — `.AppImage` + `.deb`
 
+## Before the first release
+
+- App icons are still missing from `build/` (see `build/README.md`); without them the installer uses Electron's default icon.
+- Whether to sign (and pay for it) depends on the distribution decision in [roadmap.md](roadmap.md). An unsigned GitHub *pre-release* is the zero-cost way to test demand.
+
 ## Signing & notarization
 
 Unsigned builds still work but trigger **Gatekeeper** (macOS) and **SmartScreen**
@@ -71,7 +76,7 @@ one, plus the app icons electron-builder expects.
 
 ## Auto-update
 
-`electron-updater` checks the GitHub Release feed on a packaged, signed build.
+`electron-updater` checks the GitHub Release feed on a packaged, signed build. It is the app's only network request and can be turned off in Settings ([ADR-0005](decisions/0005-update-check-network-exception.md)).
 Downloads happen in the background but **installing is always the user's choice**
 (see [`electron/updater.ts`](../electron/updater.ts)) — a surprise restart
 mid-search would lose the user's place. In dev or unsigned builds the updater is
