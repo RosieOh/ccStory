@@ -1,0 +1,28 @@
+# Only what ships inside the app or runs the release: falling behind on these is a
+# security problem (Electron patches only its latest three majors). Everything else is
+# upgraded deliberately, not on a bot's schedule.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    allow:
+      - dependency-name: electron
+      - dependency-name: electron-updater
+      - dependency-name: better-sqlite3
+    groups:
+      runtime:
+        patterns: ['electron', 'electron-updater', 'better-sqlite3']
+    commit-message:
+      prefix: 'CHORE'
+    labels: ['type: chore', 'area: security']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'CHORE'
+    labels: ['type: chore', 'area: ci']
