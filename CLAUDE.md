@@ -7,7 +7,7 @@ This repository is the **Claude Vault** Electron + React app. Use this file as a
 - `npm run dev` — Vite + Electron with HMR for the renderer. DevTools는 기본 비활성(터미널 DevTools 잡음 방지). 필요 시 `VAULT_OPEN_DEVTOOLS=1 npm run dev`.
 - `npm run build` — Typecheck project refs, Vite production build, `electron-builder` DMG.
 - `npm run poc` — Standalone scan of `~/.claude/projects` (+ Codex) with parser stats.
-- `npm test` — unit tests. `npm run test:db` — SQLite integration tests. `npm run bench -- <vault.db>` — search latency.
+- `npm test` — unit tests. `npm run test:db` — SQLite integration tests. `npm run test:e2e` — launches the built app (`npx vite build` first) against `tests/e2e/fixtures` and drives it. `npm run bench -- <vault.db>` — search latency.
 - Running from an agent inside VS Code: the environment carries `ELECTRON_RUN_AS_NODE=1`; unset it before launching the app (`env -u ELECTRON_RUN_AS_NODE …`). Use `VAULT_USER_DATA=<abs dir>` so test runs never touch the real vault DB.
 
 ## Layout
