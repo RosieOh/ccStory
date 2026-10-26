@@ -273,7 +273,7 @@ export type StatsPayload = {
   totalMessages: number
   totalPrompts: number
   messagesByRole: { role: string; count: number }[]
-  /** Most frequent words in my own prompts. */
+  /** Words in my own prompts, counted as the number of prompts containing them. */
   topTokens: { token: string; count: number }[]
   activityByDay: { day: string; count: number }[]
   /** Token usage counted once per API response (schema v9+). */

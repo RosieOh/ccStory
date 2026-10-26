@@ -73,12 +73,13 @@ export function computeStats(db: DbHandle): StatsPayload {
     )
     .all() as { role: string; count: number }[]
 
-  // What *I* keep asking about — tool output and model prose would drown it out.
+  // What *I* keep asking about: count the prompts a word appears in, not its raw
+  // occurrences — one pasted log would otherwise outweigh weeks of real questions.
   const freq = new Map<string, number>()
   for (const { body } of db.prepare(`SELECT prompt_text AS body FROM messages WHERE is_prompt = 1`).iterate() as Iterable<{
     body: string
   }>) {
-    for (const t of tokenize(body)) freq.set(t, (freq.get(t) ?? 0) + 1)
+    for (const t of new Set(tokenize(body))) freq.set(t, (freq.get(t) ?? 0) + 1)
   }
   const topTokens = [...freq.entries()]
     .sort((a, b) => b[1] - a[1])
