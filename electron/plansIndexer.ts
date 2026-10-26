@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DbHandle } from './db.js'
+import type { ArchiveMode } from '../shared/ipc.js'
 
 const MAX_DEPTH = 8
 
@@ -45,6 +46,8 @@ export function indexPlanFileSync(db: DbHandle, filePath: string): void {
     .get(filePath) as { id: number; file_mtime_ms: number } | undefined
 
   if (existing && existing.file_mtime_ms === mtime) {
+    // An archived plan whose file came back unchanged is live again.
+    db.prepare(`UPDATE plan_files SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL`).run(existing.id)
     return
   }
 
@@ -63,33 +66,36 @@ export function indexPlanFileSync(db: DbHandle, filePath: string): void {
   tx()
 }
 
-function pruneMissingPlanRows(db: DbHandle, plansRoot: string): void {
+/** A plan whose file is gone: archived in Keep mode, deleted in Mirror mode (like sessions). */
+function planFileGone(db: DbHandle, id: number, mode: ArchiveMode) {
+  if (mode === 'keep') db.prepare(`UPDATE plan_files SET archived_at = ? WHERE id = ? AND archived_at IS NULL`).run(Date.now(), id)
+  else db.prepare(`DELETE FROM plan_files WHERE id = ?`).run(id)
+}
+
+function pruneMissingPlanRows(db: DbHandle, plansRoot: string, mode: ArchiveMode): void {
   const normRoot = path.normalize(plansRoot)
   const rows = db.prepare(`SELECT id, file_path FROM plan_files`).all() as { id: number; file_path: string }[]
   for (const r of rows) {
     const fp = path.normalize(r.file_path)
     const rel = path.relative(normRoot, fp)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-    if (!fs.existsSync(fp)) {
-      db.prepare(`DELETE FROM plan_files WHERE id = ?`).run(r.id)
-    }
+    if (!fs.existsSync(fp)) planFileGone(db, r.id, mode)
   }
 }
 
-export function fullReindexPlans(db: DbHandle, plansRoot: string): { planFiles: number } {
-  if (!fs.existsSync(plansRoot)) {
-    pruneMissingPlanRows(db, plansRoot)
-    return { planFiles: 0 }
-  }
+export function fullReindexPlans(db: DbHandle, plansRoot: string, mode: ArchiveMode): { planFiles: number } {
+  // A missing root (unmounted volume, wrong CLAUDE_HOME, Claude Code never run) says
+  // nothing about the files under it: never read it as "every plan was deleted".
+  if (!fs.existsSync(plansRoot)) return { planFiles: 0 }
   const files = walkMarkdownFiles(plansRoot)
   for (const f of files) {
     indexPlanFileSync(db, f)
   }
-  pruneMissingPlanRows(db, plansRoot)
+  pruneMissingPlanRows(db, plansRoot, mode)
   return { planFiles: files.length }
 }
 
-export function indexPlanSinglePath(db: DbHandle, plansRoot: string, absoluteFilePath: string): void {
+export function indexPlanSinglePath(db: DbHandle, plansRoot: string, absoluteFilePath: string, mode: ArchiveMode): void {
   const normalized = path.normalize(absoluteFilePath)
   const normRoot = path.normalize(plansRoot)
   const rel = path.relative(normRoot, normalized)
@@ -97,16 +103,19 @@ export function indexPlanSinglePath(db: DbHandle, plansRoot: string, absoluteFil
   if (!normalized.toLowerCase().endsWith('.md')) return
 
   if (!fs.existsSync(normalized)) {
-    db.prepare(`DELETE FROM plan_files WHERE file_path = ?`).run(normalized)
+    if (!fs.existsSync(normRoot)) return
+    const row = db.prepare(`SELECT id FROM plan_files WHERE file_path = ?`).get(normalized) as { id: number } | undefined
+    if (row) planFileGone(db, row.id, mode)
     return
   }
 
   indexPlanFileSync(db, normalized)
 }
 
-export function isPathUnderPlansRoot(plansRoot: string, absoluteFilePath: string): boolean {
+/** True when `absoluteFilePath` lies inside `root` (plans root, or a session source root). */
+export function isPathUnder(root: string, absoluteFilePath: string): boolean {
   const normalized = path.normalize(absoluteFilePath)
-  const normRoot = path.normalize(plansRoot)
+  const normRoot = path.normalize(root)
   const rel = path.relative(normRoot, normalized)
   return !rel.startsWith('..') && !path.isAbsolute(rel)
 }
