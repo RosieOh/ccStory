@@ -38,7 +38,8 @@ trailing line without `\n` that does not parse yet is left for the next event.
 Keep / Delete too). Archived rows stay searchable and are badged in the UI. Removing
 them is an explicit action ("Delete all archived"). Reconciliation is skipped entirely
 when an adapter's root directory is missing, so an unmounted disk or wrong
-`CLAUDE_HOME` can never read as "everything was deleted".
+`CLAUDE_HOME` can never read as "everything was deleted". Since v0.6.0 (schema v10) plan
+files follow the same rule, and so do single file-deletion events from the watcher.
 
 **Migration rule.** From schema v9 on, a migration must never drop `sessions` or
 `messages` wholesale — archived sessions exist only in the vault DB. To make the next
