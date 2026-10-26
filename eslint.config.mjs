@@ -15,6 +15,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    // Served as-is to the renderer before the bundle (pre-paint theme).
+    files: ['public/**/*.js'],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2022,
