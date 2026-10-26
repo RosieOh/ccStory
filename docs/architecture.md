@@ -83,7 +83,9 @@ See [ADR-0006](decisions/0006-stable-keys-append-indexing-archive.md).
 - **Stable keys.** `messages.msg_key` = line `uuid` (Codex `payload.id`), else `file#line`.
 - **Archive.** When a source file disappears the session gets `archived_at` (setting
   `archiveMode = keep`, the default) or is deleted (`mirror`). Reconciliation is skipped
-  for an adapter whose root is missing. Purging archived rows is an explicit action.
+  for an adapter whose root is missing, and a watcher deletion event under a root that no
+  longer exists is ignored. Plans (`plan_files.archived_at`) follow the same mode and the
+  same guard. Purging archived rows (sessions and plans) is an explicit action.
 - **Live updates.** chokidar v4 watches the roots (globs were removed in v4), filters
   `.jsonl` / `.md`, and the main process forwards batched events every 300 ms.
 - **Adapters** (`electron/adapters.ts`) provide `listProjects`, `listSessions`,
@@ -122,7 +124,7 @@ Run `npm run poc` to see how your own corpus classifies.
 | `string` | Top-level string content |
 | `invalid_json` | Raw preview only |
 
-## SQLite schema (v9, summary)
+## SQLite schema (v10, summary)
 
 Index tables (derived, rebuildable except archived sessions):
 
@@ -137,7 +139,8 @@ Index tables (derived, rebuildable except archived sessions):
   (non-`meta` rows only), kept in sync by conditional triggers. `rebuild` and
   `integrity-check` work against the view.
 - `file_refs` — paths touched by tool calls (Files tab).
-- `plan_files` + `plan_files_fts`.
+- `plan_files` + `plan_files_fts`; `archived_at` (v10) — plans follow archive mode like
+  sessions.
 
 User data (never derivable — never dropped by a migration):
 
@@ -156,8 +159,8 @@ User data (never derivable — never dropped by a migration):
 **Migrations.** From v9 on, a migration must never drop `sessions`/`messages`; to force a
 re-parse, call `requestFullReparse` (resets `indexed_bytes`). The v≤8 → v9 migration moved
 favorites/tags to stable keys by re-reading the referenced lines, then rebuilt the index
-tables. Before any migration the old file is copied to the backup folder. Document every
-bump here.
+tables. v9 → v10 adds `plan_files.archived_at` in place (no re-parse). Before any migration
+the old file is copied to the backup folder. Document every bump here.
 
 ## Backups
 

@@ -27,11 +27,6 @@ Backups are full snapshots, so the default of three takes about 3× the DB size 
 (≈2.4 GB on the audited machine). Settings shows the total and lets you keep 1 or turn
 automatic backups off (ADR-0010).
 
-## Plans are not archived
-
-`~/.claude/plans` rows follow their files (deleted when the file is). Only session
-transcripts are archived.
-
 ## Codex CLI support is best effort
 
 The Codex rollout format is undocumented; the adapter maps `response_item` messages, tool
