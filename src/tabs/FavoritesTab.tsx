@@ -1,6 +1,6 @@
 import type { FavoriteRow, TagRow } from '../../shared/ipc'
 import { useI18n } from '../i18n'
-import { GHOST_BTN, sidebarPrimaryLabel } from '../ui'
+import { GHOST_BTN, RoleBadge, sidebarPrimaryLabel } from '../ui'
 import { formatTs } from '../format'
 import { TagEditor } from '../components/TagEditor'
 import type { TranscriptOpen } from '../types'
@@ -27,70 +27,75 @@ export function FavoritesTab({
 }) {
   const { locale, t } = useI18n()
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <h2 className="mb-3 text-sm font-semibold text-white">{t('nav.favorites')}</h2>
-      <div className="space-y-3">
-        {favorites.length === 0 && <p className="text-sm text-zinc-500">{t('favorites.empty')}</p>}
-        {favorites.map((f) => (
-          <div key={f.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm">
-            <div className="mb-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-500">
-              <span className="font-sans font-medium text-zinc-300">{sidebarPrimaryLabel(f.projectLabel)}</span>
-              <span className="truncate">{f.sessionFile}</span>
-              <span className="tabular">{formatTs(f.createdAt, locale)}</span>
-              {f.archived && (
-                <span
-                  className="rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[10px] text-amber-700"
-                  title={t('badge.archived.hint')}
-                >
-                  {f.messageId == null ? t('favorites.snapshot') : t('badge.archived')}
-                </span>
-              )}
-            </div>
-            <pre className="mb-2 max-h-32 overflow-auto whitespace-pre-wrap break-words text-xs text-zinc-200 [overflow-wrap:anywhere]">
-              {f.body}
-            </pre>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {f.sessionId != null && (
-                <button
-                  type="button"
-                  className={GHOST_BTN}
-                  onClick={() =>
-                    onOpenSession({
-                      sessionId: f.sessionId!,
-                      sessionFile: f.sessionFile,
-                      projectLabel: f.projectLabel,
-                      highlightLine: f.lineIndex ?? -1,
-                    })
-                  }
-                >
-                  {t('action.openSession')}
-                </button>
-              )}
-              <button
-                type="button"
-                className={GHOST_BTN}
-                onClick={() => {
-                  void window.vault.copyText(f.body)
-                  onStatus(t('toast.copied'))
-                }}
-              >
-                {t('action.copy')}
-              </button>
-              <button
-                type="button"
-                className={GHOST_BTN}
-                onClick={async () => {
-                  await window.vault.favoriteRemove(f.msgKey)
-                  onRemoved()
-                }}
-              >
-                {t('action.remove')}
-              </button>
-            </div>
-            <TagEditor msgKey={f.msgKey} tagIds={f.tagIds} tags={tags} onChange={onTagsChanged} />
-          </div>
-        ))}
-      </div>
+    <div className="page">
+      <section className="section">
+        <div className="section-head">
+          <h2 className="section-title">{t('favorites.count', { count: favorites.length.toLocaleString() })}</h2>
+        </div>
+        <div className="list glass">
+          {favorites.length === 0 && <p className="empty">{t('favorites.empty')}</p>}
+          {favorites.map((f) => (
+            <article key={f.id} className="row">
+              <div className="flex items-start gap-2">
+                <div className="row-meta flex-1">
+                  <RoleBadge role={f.role} />
+                  <span className="font-semibold text-ink-2">{sidebarPrimaryLabel(f.projectLabel)}</span>
+                  <span className="tabular">{formatTs(f.createdAt, locale)}</span>
+                  {f.archived && (
+                    <span className="badge tone-amber" title={t('badge.archived.hint')}>
+                      {f.messageId == null ? t('favorites.snapshot') : t('badge.archived')}
+                    </span>
+                  )}
+                </div>
+                <div className="row-actions">
+                  {f.sessionId != null && (
+                    <button
+                      type="button"
+                      className={GHOST_BTN}
+                      onClick={() =>
+                        onOpenSession({
+                          sessionId: f.sessionId!,
+                          sessionFile: f.sessionFile,
+                          projectLabel: f.projectLabel,
+                          highlightLine: f.lineIndex ?? -1,
+                        })
+                      }
+                    >
+                      {t('action.openSession')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={GHOST_BTN}
+                    onClick={() => {
+                      void window.vault.copyText(f.body)
+                      onStatus(t('toast.copied'))
+                    }}
+                  >
+                    {t('action.copy')}
+                  </button>
+                  <button
+                    type="button"
+                    className={GHOST_BTN}
+                    onClick={async () => {
+                      await window.vault.favoriteRemove(f.msgKey)
+                      onStatus(t('toast.unfavorited'))
+                      onRemoved()
+                    }}
+                  >
+                    {t('action.remove')}
+                  </button>
+                </div>
+              </div>
+              <p className="mt-1.5 line-clamp-4 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink-1 [overflow-wrap:anywhere]">
+                {f.body}
+              </p>
+              <p className="mono mt-1 truncate text-ink-3">{f.sessionFile}</p>
+              <TagEditor msgKey={f.msgKey} tagIds={f.tagIds} tags={tags} onChange={onTagsChanged} />
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

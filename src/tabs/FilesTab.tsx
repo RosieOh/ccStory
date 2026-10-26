@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FileRow, FileTouchRow } from '../../shared/ipc'
 import { useI18n } from '../i18n'
-import { Icon, sidebarPrimaryLabel } from '../ui'
+import { Icon, RoleBadge, sidebarPrimaryLabel } from '../ui'
 import { formatTs } from '../format'
 import type { TranscriptOpen } from '../types'
 
@@ -49,128 +49,96 @@ export function FilesTab({ onOpenSession }: { onOpenSession: (o: TranscriptOpen)
   }, [selected])
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex w-[380px] shrink-0 flex-col border-r border-zinc-800">
-        <div className="border-b border-zinc-800 bg-zinc-900 px-3 py-2">
-          <div className="relative">
-            <Icon
-              name="search"
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600"
-            />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('files.placeholder')}
-              aria-label={t('files.search')}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-950 py-1.5 pl-8 pr-3 text-[13px] text-white outline-none transition duration-150 placeholder:text-zinc-600 focus:border-brand focus:bg-zinc-900 focus:ring-1 focus:ring-brand/40"
-            />
-          </div>
-          <p className="mt-1.5 font-mono text-[11px] text-zinc-600">
-            {loading ? '…' : t('files.count', { count: files.length })}
-          </p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {!loading && files.length === 0 && (
-            <p className="p-3 text-[12px] text-zinc-500">
-              {t('files.empty')}
+    <div className="page page-fill">
+      <div className="flex min-h-0 flex-1 gap-4">
+        <section className="list glass flex w-[380px] shrink-0 flex-col">
+          <div className="px-2 pb-2 pt-2">
+            <label className="search-field !h-10 bg-well !shadow-none">
+              <Icon name="search" className="text-ink-3" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('files.placeholder')}
+                aria-label={t('files.search')}
+              />
+            </label>
+            <p className="mt-2 px-1 text-[12.5px] text-ink-3 tabular">
+              {loading ? t('common.loading') : t('files.count', { count: files.length })}
             </p>
-          )}
-          {files.map((f) => {
-            const active = selected?.path === f.path
-            return (
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {!loading && files.length === 0 && <p className="empty">{t('files.empty')}</p>}
+            {files.map((f) => (
               <button
                 key={f.path}
                 type="button"
                 onClick={() => setSelected(f)}
-                className={`block w-full border-b border-zinc-800 px-3 py-2 text-left transition-colors duration-100 ${
-                  active ? 'bg-brand-soft' : 'hover:bg-zinc-900'
-                }`}
+                className="row"
+                aria-current={selected?.path === f.path ? 'true' : undefined}
               >
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className={`min-w-0 truncate text-[13px] ${active ? 'font-medium text-brand-text' : 'text-white'}`}
-                  >
+                <span className="flex items-baseline gap-2">
+                  <span className={`min-w-0 truncate font-semibold ${selected?.path === f.path ? 'text-brand-ink' : 'text-ink-1'}`}>
                     {f.basename}
                   </span>
-                  <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
+                  <span className="ml-auto shrink-0 text-[12px] text-ink-3 tabular">
                     {t('files.touches', { touches: f.touches, sessions: f.sessions })}
                   </span>
-                </div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-600">{f.path}</div>
+                </span>
+                <span className="mono mt-1 block truncate text-ink-3">{f.path}</span>
                 {f.lastTouched ? (
-                  <div className="mt-0.5 font-mono text-[11px] tabular text-zinc-600">
-                    {formatTs(f.lastTouched, locale)}
-                  </div>
+                  <span className="mt-0.5 block text-[12px] text-ink-3 tabular">{formatTs(f.lastTouched, locale)}</span>
                 ) : null}
               </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        {!selected ? (
-          <div className="flex h-full items-center justify-center p-8 text-center">
-            <div>
-              <p className="text-[13px] text-zinc-400">{t('files.selectPrompt')}</p>
-              <p className="mt-1 text-[12px] text-zinc-600">
-                {t('files.selectHint')}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="border-b border-zinc-800 bg-zinc-900 px-3 py-2">
-              <h2 className="truncate text-[13px] font-semibold text-white">{selected.basename}</h2>
-              <p className="truncate font-mono text-[11px] text-zinc-600">{selected.path}</p>
-            </div>
-            {timeline.map((row) => (
-              <article key={row.messageId} className="border-b border-zinc-800 px-3 py-2.5">
-                <div className="mb-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-zinc-600">
-                  <span
-                    className={`rounded-[3px] px-1 py-px text-[10px] font-medium uppercase ${
-                      row.role === 'user' ? 'bg-brand-soft text-brand-text' : 'bg-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    {row.role === 'user'
-                      ? t('role.badge.user')
-                      : row.role === 'assistant'
-                        ? t('role.badge.assistant')
-                        : row.role === 'tool'
-                          ? t('role.badge.tool')
-                          : row.role}
-                  </span>
-                  <span className="truncate font-sans font-medium text-zinc-300">
-                    {sidebarPrimaryLabel(row.projectName)}
-                  </span>
-                  {row.gitBranch ? (
-                    <span className="rounded-[3px] border border-zinc-800 px-1 text-[10px]">
-                      {row.gitBranch}
-                    </span>
-                  ) : null}
-                  {row.tsMs ? <span className="tabular">{formatTs(row.tsMs, locale)}</span> : null}
-                  <button
-                    type="button"
-                    className="ml-auto text-brand-text hover:underline"
-                    onClick={() =>
-                      onOpenSession({
-                        sessionId: row.sessionId,
-                        sessionFile: row.sessionFile,
-                        projectLabel: row.projectName,
-                        highlightLine: row.lineIndex,
-                      })
-                    }
-                  >
-                    {t('action.openSession')}
-                  </button>
-                </div>
-                <p className="line-clamp-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-400 [overflow-wrap:anywhere]">
-                  {row.preview}
-                </p>
-              </article>
             ))}
-          </>
-        )}
+          </div>
+        </section>
+
+        <section className="list glass min-w-0 flex-1 overflow-y-auto">
+          {!selected ? (
+            <div className="flex h-full items-center justify-center p-8 text-center">
+              <div>
+                <p className="text-[15px] font-semibold text-ink-1">{t('files.selectPrompt')}</p>
+                <p className="mt-1 text-[13.5px] text-ink-3">{t('files.selectHint')}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="px-3.5 pb-3 pt-3">
+                <h2 className="section-title truncate">{selected.basename}</h2>
+                <p className="mono mt-0.5 truncate text-ink-3">{selected.path}</p>
+              </div>
+              {timeline.map((row) => (
+                <article key={row.messageId} className="row">
+                  <div className="flex items-start gap-2">
+                    <div className="row-meta flex-1">
+                      <RoleBadge role={row.role} />
+                      <span className="truncate font-semibold text-ink-2">{sidebarPrimaryLabel(row.projectName)}</span>
+                      {row.gitBranch ? <span className="badge tone-gray mono">{row.gitBranch}</span> : null}
+                      {row.tsMs ? <span className="tabular">{formatTs(row.tsMs, locale)}</span> : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs shrink-0"
+                      onClick={() =>
+                        onOpenSession({
+                          sessionId: row.sessionId,
+                          sessionFile: row.sessionFile,
+                          projectLabel: row.projectName,
+                          highlightLine: row.lineIndex,
+                        })
+                      }
+                    >
+                      {t('action.openSession')}
+                    </button>
+                  </div>
+                  <p className="mono mt-1.5 line-clamp-2 whitespace-pre-wrap break-words leading-[1.55] text-ink-2 [overflow-wrap:anywhere]">
+                    {row.preview}
+                  </p>
+                </article>
+              ))}
+            </>
+          )}
+        </section>
       </div>
     </div>
   )
