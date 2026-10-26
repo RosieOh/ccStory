@@ -37,6 +37,7 @@ fs.cpSync(path.join(root, 'tests', 'e2e', 'fixtures'), tmp, { recursive: true })
 const projectDir = path.join(claudeHome, 'projects', '-work-demo')
 const sessionA = path.join(projectDir, '0e2e0000-0000-4000-8000-00000000000a.jsonl')
 const sessionB = path.join(projectDir, '0e2e0000-0000-4000-8000-00000000000b.jsonl')
+const planFile = path.join(claudeHome, 'plans', 'login-validation.md')
 
 /** relPath → size:mtime for every file and directory under the transcript roots. */
 function snapshotTree(dirs) {
@@ -181,14 +182,22 @@ try {
     )
   })
 
-  await step('a deleted transcript stays searchable as archived', async () => {
+  await step('a deleted transcript and a deleted plan stay searchable as archived', async () => {
     fs.rmSync(sessionB)
+    fs.rmSync(planFile)
     await until(
       async () => {
         const hits = await vault(() => window.vault.search({ query: 'archivedsentinel', limit: 5 }))
         return hits?.length === 1 && hits[0].archived === true
       },
-      { timeout: 30_000, what: 'archived hit' },
+      { timeout: 30_000, what: 'archived session hit' },
+    )
+    await until(
+      async () => {
+        const hits = await vault(() => window.vault.search({ query: 'plumbagomarker', scope: 'plans', limit: 5 }))
+        return hits?.length === 1 && hits[0].archived === true
+      },
+      { timeout: 30_000, what: 'archived plan hit' },
     )
   })
 
@@ -226,7 +235,7 @@ try {
 
   await step('nothing was written under the transcript roots', async () => {
     const after = snapshotTree([claudeHome, codexHome])
-    const touched = new Set([sessionA, sessionB].map((p) => path.relative(tmp, p)))
+    const touched = new Set([sessionA, sessionB, planFile].map((p) => path.relative(tmp, p)))
     const changed = [...new Set([...before.keys(), ...after.keys()])].filter(
       (k) => !touched.has(k) && before.get(k) !== after.get(k) && !(before.get(k) === 'dir' && after.get(k) === 'dir'),
     )
