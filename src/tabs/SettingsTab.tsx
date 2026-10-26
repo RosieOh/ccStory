@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SettingsInfo, UpdateStatus } from '../../shared/ipc'
-import type { MessageKey } from '../../shared/i18n'
-import { useT } from '../i18n'
-import { GHOST_BTN, Segmented } from '../ui'
+import { LOCALES, LOCALE_LABEL, type MessageKey } from '../../shared/i18n'
+import { useI18n } from '../i18n'
+import { Segmented } from '../ui'
 
 function formatBytes(n: number): string {
   if (n >= 1 << 30) return `${(n / (1 << 30)).toFixed(2)} GB`
@@ -21,11 +21,14 @@ const UPDATE_STATE_KEY: Record<UpdateStatus['state'], MessageKey> = {
   error: 'settings.update.state.error',
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <h3 className="mb-2 text-[13px] font-semibold text-white">{title}</h3>
-      <div className="space-y-2 text-[12px] text-zinc-400">{children}</div>
+    <section className="glass panel flex flex-col gap-4 p-5">
+      <div>
+        <h2 className="section-title">{title}</h2>
+        {desc ? <p className="section-desc mt-1 leading-relaxed">{desc}</p> : null}
+      </div>
+      {children}
     </section>
   )
 }
@@ -46,7 +49,7 @@ export function SettingsTab({
   onStatus: (s: string) => void
   onChanged: () => void
 }) {
-  const t = useT()
+  const { locale, setLocale, t } = useI18n()
   const [info, setInfo] = useState<SettingsInfo | null>(null)
   const [confirmPurge, setConfirmPurge] = useState(false)
   const [reparsing, setReparsing] = useState(false)
@@ -62,7 +65,7 @@ export function SettingsTab({
     return () => clearTimeout(timer)
   }, [confirmPurge])
 
-  if (!info) return <p className="p-4 text-sm text-zinc-500">{t('common.loading')}</p>
+  if (!info) return <p className="empty">{t('common.loading')}</p>
 
   const set = async (patch: Partial<SettingsInfo>) => {
     await window.vault.settingsSet(patch)
@@ -70,32 +73,26 @@ export function SettingsTab({
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <h2 className="mb-3 text-sm font-semibold text-white">{t('nav.settings')}</h2>
-      <div className="grid max-w-3xl gap-4">
-        <Section title={t('settings.archive.title')}>
-          <p className="leading-relaxed">{t('settings.archive.help')}</p>
-          <Segmented
-            value={info.archiveMode}
-            onChange={(v) => void set({ archiveMode: v })}
-            options={
-              [
-                ['keep', t('settings.archive.keep')],
-                ['mirror', t('settings.archive.mirror')],
-              ] as const
-            }
-          />
-          {info.archiveMode === 'mirror' && (
-            <p className="leading-relaxed text-zinc-500">{t('settings.archive.mirrorNote')}</p>
-          )}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="font-mono text-[11px] text-zinc-500">
-              {t('settings.archive.count', { count: archivedSessions })}
-            </span>
+    <div className="page">
+      <div className="grid max-w-4xl gap-4">
+        <Section title={t('settings.archive.title')} desc={t('settings.archive.help')}>
+          <div className="flex flex-wrap items-center gap-3">
+            <Segmented
+              label={t('settings.archive.title')}
+              value={info.archiveMode}
+              onChange={(v) => void set({ archiveMode: v })}
+              options={
+                [
+                  ['keep', t('settings.archive.keep')],
+                  ['mirror', t('settings.archive.mirror')],
+                ] as const
+              }
+            />
+            <span className="text-[13px] text-ink-3 tabular">{t('settings.archive.count', { count: archivedSessions })}</span>
             {archivedSessions > 0 && (
               <button
                 type="button"
-                className={`${GHOST_BTN} ${confirmPurge ? 'border-red-700 text-red-500' : ''}`}
+                className={`btn btn-xs ${confirmPurge ? 'btn-danger' : 'btn-tertiary'}`}
                 onClick={async () => {
                   if (!confirmPurge) {
                     setConfirmPurge(true)
@@ -112,12 +109,13 @@ export function SettingsTab({
               </button>
             )}
           </div>
+          {info.archiveMode === 'mirror' && <p className="alert tone-amber">{t('settings.archive.mirrorNote')}</p>}
         </Section>
 
-        <Section title={t('settings.update.title')}>
-          <p className="leading-relaxed">{t('settings.update.help')}</p>
-          <div className="flex flex-wrap items-center gap-2">
+        <Section title={t('settings.update.title')} desc={t('settings.update.help')}>
+          <div className="flex flex-wrap items-center gap-3">
             <Segmented
+              label={t('settings.update.title')}
               value={info.autoUpdate ? 'on' : 'off'}
               onChange={(v) => void set({ autoUpdate: v === 'on' })}
               options={
@@ -129,13 +127,13 @@ export function SettingsTab({
             />
             <button
               type="button"
-              className={GHOST_BTN}
+              className="btn btn-tertiary btn-xs"
               disabled={!info.autoUpdate || update.state === 'unsupported' || update.state === 'checking'}
               onClick={() => void window.vault.updateCheck()}
             >
               {t('settings.update.check')}
             </button>
-            <span className="text-[11px] text-zinc-500">
+            <span className="text-[13px] text-ink-3">
               {t(UPDATE_STATE_KEY[update.state], {
                 percent: update.percent ?? 0,
                 version: update.version ?? '',
@@ -145,19 +143,28 @@ export function SettingsTab({
           </div>
         </Section>
 
-        <Section title={t('settings.data.title')}>
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
-            <dt className="text-zinc-500">{t('settings.data.db')}</dt>
-            <dd className="break-all font-mono text-[11px] text-zinc-300">
+        <Section title={t('settings.language.title')}>
+          <Segmented
+            label={t('settings.language.title')}
+            value={locale}
+            onChange={setLocale}
+            options={LOCALES.map((l) => [l, LOCALE_LABEL[l]] as const)}
+          />
+        </Section>
+
+        <Section title={t('settings.data.title')} desc={t('settings.data.reparseHelp')}>
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[13.5px]">
+            <dt className="text-ink-3">{t('settings.data.db')}</dt>
+            <dd className="mono break-all !text-[12.5px] text-ink-1">
               {info.dbPath} · {formatBytes(info.dbSizeBytes)}
             </dd>
-            <dt className="text-zinc-500">{t('settings.data.source')}</dt>
-            <dd className="break-all font-mono text-[11px] text-zinc-300">{info.claudeHome}</dd>
+            <dt className="text-ink-3">{t('settings.data.source')}</dt>
+            <dd className="mono break-all !text-[12.5px] text-ink-1">{info.claudeHome}</dd>
           </dl>
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div>
             <button
               type="button"
-              className={GHOST_BTN}
+              className="btn btn-tertiary"
               disabled={reparsing}
               onClick={async () => {
                 setReparsing(true)
@@ -173,7 +180,6 @@ export function SettingsTab({
             >
               {reparsing ? t('settings.data.reparsing') : t('settings.data.reparse')}
             </button>
-            <span className="text-[11px] text-zinc-500">{t('settings.data.reparseHelp')}</span>
           </div>
         </Section>
       </div>
