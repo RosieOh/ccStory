@@ -70,10 +70,8 @@ storage locations and acceptable use. This app does not reverse engineer network
 Release builds are unsigned until signing secrets exist (see `docs/release.md`); macOS
 Gatekeeper requires explicit approval, and auto-update does not work unsigned.
 
-## Native module and tests
+## Native module
 
-`better-sqlite3` is built for **Electron's ABI** by `postinstall`. `npm test` (pure unit
-tests) runs anywhere; `npm run test:db` runs the SQLite tests inside Electron in Node mode
-(or under plain Node after `npm rebuild better-sqlite3`, as CI does). On Node 24 there is
-no prebuilt binary for the pinned better-sqlite3, so the Electron path is the reliable one
-locally.
+`better-sqlite3` (13.x) ships N-API prebuilds for macOS, Windows and Linux (x64/arm64),
+so nothing is compiled on install and the same binary loads in Node and Electron. Other
+platforms fall back to a source build, which needs a C++ toolchain.

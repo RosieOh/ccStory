@@ -21,5 +21,5 @@ Search uses FTS `MATCH` with token-prefix boolean queries; on failure, fall back
 ## Consequences
 
 - **Positive:** Mature query language, BM25 ranking, snippet support, single-file DB for app metadata + index.
-- **Negative:** Native module complicates build (`electron-builder install-app-deps`, `asarUnpack` for `.node`).
+- **Negative:** Native module complicates build (`electron-builder install-app-deps`, `asarUnpack` for `.node`). → Eased with better-sqlite3 13: N-API prebuilds, no rebuild step; `asarUnpack` is still needed.
 - **Follow-up:** Consider background indexing queue if users report UI stalls on huge corpora. → Done in [ADR-0007](0007-worker-threads.md).

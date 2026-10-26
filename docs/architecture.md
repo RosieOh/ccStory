@@ -223,9 +223,8 @@ helpers in `src/format.ts`. The visual system — tokens and glass component cla
 - `npm test` — unit tests (parser, Codex parser, search helpers, pricing, IPC guards).
 - `npm run test:db` — SQLite integration tests in `tests/db/` (append indexing, partial
   lines, re-read with favorites, archive vs mirror, missing-root guard, usage dedupe, FTS
-  integrity, prompts, v8 migration). `scripts/test-db.mjs` runs them under whichever
-  runtime the native `better-sqlite3` build matches (Electron in Node mode after
-  `npm install`; plain Node in CI after `npm rebuild better-sqlite3`).
+  integrity, prompts, v8 migration). `better-sqlite3` ships N-API prebuilds, so they run
+  under plain Node with the same binary the app loads in Electron.
 
 ## Packaging
 

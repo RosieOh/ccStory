@@ -60,7 +60,7 @@ Other scripts:
 - `npm run typecheck` — main/preload/shared and the renderer.
 - `npm run lint` — ESLint (flat config).
 - `npm test` — unit tests (parsers, search helpers, pricing, IPC guards).
-- `npm run test:db` — SQLite integration tests (indexing, archive, migrations, search). Runs inside Electron in Node mode, so it uses the same native build as the app.
+- `npm run test:db` — SQLite integration tests (indexing, archive, migrations, search).
 - `npm run bench -- <vault.db>` — search latency on an existing index.
 - `npm run poc` — CLI scan of your transcripts with parser stats (no GUI, no DB).
 
