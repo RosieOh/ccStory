@@ -2,41 +2,54 @@
 
 import type {
   ExportOptions,
+  ExportSaveResult,
   FavoriteRow,
   FileRow,
   FileTouchRow,
   IndexProgress,
   PlanListRow,
   ProjectRow,
+  PromptQuery,
+  PromptRow,
   RecentSessionRow,
   ReindexResult,
   SearchFilters,
+  SessionInfo,
   SessionMessageRow,
+  Settings,
+  SettingsInfo,
   StatsPayload,
   TagRow,
   TemplateRow,
   UpdateStatus,
   UnifiedSearchHit,
 } from '../shared/ipc'
+import type { ModelPrice } from '../shared/pricing'
 
 export type VaultApi = {
   projectsList: () => Promise<ProjectRow[]>
-  search: (filters: SearchFilters) => Promise<UnifiedSearchHit[]>
+  /** Resolves to `null` when a newer search superseded this one before it ran. */
+  search: (filters: SearchFilters) => Promise<UnifiedSearchHit[] | null>
   plansList: () => Promise<PlanListRow[]>
   planBody: (planId: number) => Promise<string>
-  reindex: () => Promise<ReindexResult>
+  reindex: (reparse?: boolean) => Promise<ReindexResult>
   copyText: (text: string) => Promise<void>
+  messageBody: (messageId: number) => Promise<string>
   favoritesList: () => Promise<FavoriteRow[]>
   favoriteAdd: (messageId: number) => Promise<void>
-  favoriteRemove: (messageId: number) => Promise<void>
+  favoriteRemove: (msgKey: string) => Promise<void>
   tagsList: () => Promise<TagRow[]>
   tagCreate: (name: string, color?: string | null) => Promise<number>
-  messageTagsSet: (messageId: number, tagIds: number[]) => Promise<void>
-  messageTagsGet: (messageId: number) => Promise<number[]>
+  tagRename: (id: number, name: string) => Promise<boolean>
+  tagDelete: (id: number) => Promise<void>
+  messageTagsSet: (msgKey: string, tagIds: number[]) => Promise<void>
   stats: () => Promise<StatsPayload>
   exportMessages: (messageIds: number[], format: 'md' | 'csv', opts?: ExportOptions) => Promise<string>
+  exportSave: (text: string, format: 'md' | 'csv') => Promise<ExportSaveResult>
   sessionTranscript: (sessionId: number) => Promise<SessionMessageRow[]>
+  sessionInfo: (sessionId: number) => Promise<SessionInfo | null>
   recentSessions: (projectId?: number | null) => Promise<RecentSessionRow[]>
+  promptsList: (q: PromptQuery) => Promise<PromptRow[]>
   pricesList: () => Promise<ModelPrice[]>
   pricesSave: (prices: ModelPrice[]) => Promise<ModelPrice[]>
   pricesReset: () => Promise<ModelPrice[]>
@@ -46,6 +59,9 @@ export type VaultApi = {
   templateDelete: (id: number) => Promise<void>
   filesList: (query: string) => Promise<FileRow[]>
   fileTimeline: (path: string) => Promise<FileTouchRow[]>
+  settingsGet: () => Promise<SettingsInfo>
+  settingsSet: (patch: Partial<Settings>) => Promise<Settings>
+  archivePurge: () => Promise<number>
   updateStatus: () => Promise<UpdateStatus>
   updateCheck: () => Promise<UpdateStatus>
   updateInstall: () => Promise<void>
