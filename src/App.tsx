@@ -27,6 +27,10 @@ import { CommandPalette } from './components/CommandPalette'
 import { FilesTab } from './tabs/FilesTab'
 import { TemplatesTab } from './tabs/TemplatesTab'
 import { StatsTab } from './tabs/StatsTab'
+import { PromptsTab } from './tabs/PromptsTab'
+import { SettingsTab } from './tabs/SettingsTab'
+import { FavoritesTab } from './tabs/FavoritesTab'
+import { ExportTab } from './tabs/ExportTab'
 
 const NAV_GROUPS: {
   labelKey: MessageKey
@@ -36,6 +40,7 @@ const NAV_GROUPS: {
     labelKey: 'nav.group.explore',
     items: [
       { key: 'search', labelKey: 'nav.search' as const, icon: 'search' },
+      { key: 'prompts', labelKey: 'nav.prompts' as const, icon: 'prompt' },
       { key: 'files', labelKey: 'nav.files' as const, icon: 'file' },
       { key: 'favorites', labelKey: 'nav.favorites' as const, icon: 'star' },
       { key: 'templates', labelKey: 'nav.templates' as const, icon: 'template' },
@@ -48,7 +53,20 @@ const NAV_GROUPS: {
       { key: 'export', labelKey: 'nav.export' as const, icon: 'export' },
     ],
   },
+  {
+    labelKey: 'nav.group.app',
+    items: [{ key: 'settings', labelKey: 'nav.settings' as const, icon: 'settings' }],
+  },
 ]
+
+/** Fuzzy re-ranking may only reorder the FTS results, never drop one. */
+function fuzzyReorder<T>(items: T[], keys: string[], query: string): T[] {
+  const fuse = new Fuse(items, { keys, threshold: 0.42, ignoreLocation: true })
+  const matched = fuse.search(query).map((r) => r.item)
+  if (!matched.length) return items
+  const seen = new Set(matched)
+  return [...matched, ...items.filter((h) => !seen.has(h))]
+}
 
 export default function App() {
   const { locale, setLocale, t } = useI18n()
@@ -74,6 +92,14 @@ export default function App() {
   const [planPreview, setPlanPreview] = useState<PlanPreviewOpen | null>(null)
   const [excludeMeta, setExcludeMeta] = useState(true)
   const [excludeSubagents, setExcludeSubagents] = useState(false)
+  // On by default: tool output is ~40% of conversation rows and outranks the prose
+  // people actually look for. Untick to search command output and file dumps.
+  const [excludeTools, setExcludeTools] = useState(true)
+  const [tagFilter, setTagFilter] = useState<number | undefined>(undefined)
+  const [confirmDeleteTag, setConfirmDeleteTag] = useState<number | null>(null)
+  const [exportFormat, setExportFormat] = useState<'md' | 'csv'>('md')
+  /** Bumped on every index change so self-loading tabs (prompts) refresh. */
+  const [refreshKey, setRefreshKey] = useState(0)
   const [recentSessions, setRecentSessions] = useState<RecentSessionRow[]>([])
   const [recentPlans, setRecentPlans] = useState<PlanListRow[]>([])
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
@@ -97,12 +123,16 @@ export default function App() {
     }
   }, [theme])
 
+  /** Sequence number of the latest search request; older responses are ignored. */
+  const searchSeq = useRef(0)
   const searchParamsRef = useRef({
     query,
     projectId,
     role,
     excludeMeta,
     excludeSubagents,
+    excludeTools,
+    tagFilter,
     searchScope,
     matchMode,
     sortMode,
@@ -114,6 +144,8 @@ export default function App() {
     role,
     excludeMeta,
     excludeSubagents,
+    excludeTools,
+    tagFilter,
     searchScope,
     matchMode,
     sortMode,
@@ -134,7 +166,8 @@ export default function App() {
   }, [])
 
   const runSearch = useCallback(async () => {
-    if (!query.trim()) {
+    const seq = ++searchSeq.current
+    if (!query.trim() && tagFilter == null) {
       setHits([])
       setLoading(false)
       return
@@ -148,41 +181,29 @@ export default function App() {
         limit: 120,
         excludeMeta,
         excludeSubagents,
+        excludeTools,
+        tagId: tagFilter,
         scope: searchScope,
         matchMode,
         sort: sortMode,
         sinceMs: sinceMsFor(dateRange),
       })
-      setHits(raw)
+      // Only the newest request may touch the list; older ones may resolve later or as
+      // `null` (superseded while queued behind a slow search).
+      if (seq === searchSeq.current && raw) setHits(raw)
     } finally {
-      setLoading(false)
+      if (seq === searchSeq.current) setLoading(false)
     }
-  }, [query, projectId, role, excludeMeta, excludeSubagents, searchScope, matchMode, sortMode, dateRange])
+  }, [query, projectId, role, excludeMeta, excludeSubagents, excludeTools, tagFilter, searchScope, matchMode, sortMode, dateRange])
 
+  // Fuse only refines relevance order; a time sort must stay a time sort.
   const fuzzyHits = useMemo(() => {
-    if (!query.trim() || hits.length === 0) return hits
-    const allMsg = hits.every(isMessageHit)
-    const allPlan = hits.every(isPlanHit)
-    if (allPlan) {
-      const fuse = new Fuse(hits, {
-        keys: ['title', 'snippet', 'filePath'],
-        threshold: 0.42,
-        ignoreLocation: true,
-      })
-      const fused = fuse.search(query.trim())
-      if (fused.length === 0) return hits
-      return fused.map((r) => r.item)
-    }
-    if (!allMsg) return hits
-    const fuse = new Fuse(hits, {
-      keys: ['body', 'snippet', 'projectSlug', 'projectName'],
-      threshold: 0.42,
-      ignoreLocation: true,
-    })
-    const fused = fuse.search(query.trim())
-    if (fused.length === 0) return hits
-    return fused.map((r) => r.item)
-  }, [hits, query])
+    const q = query.trim()
+    if (!q || hits.length === 0 || sortMode !== 'relevance') return hits
+    if (hits.every(isPlanHit)) return fuzzyReorder(hits, ['title', 'snippet', 'filePath'], q)
+    if (!hits.every(isMessageHit)) return hits
+    return fuzzyReorder(hits, ['body', 'snippet', 'projectSlug', 'projectName'], q)
+  }, [hits, query, sortMode])
 
   useEffect(() => {
     void loadProjects()
@@ -221,8 +242,10 @@ export default function App() {
     if (dateRange !== 'all') n += 1
     if (!excludeMeta) n += 1
     if (excludeSubagents) n += 1
+    if (!excludeTools) n += 1
+    if (tagFilter != null) n += 1
     return n
-  }, [role, matchMode, sortMode, dateRange, excludeMeta, excludeSubagents])
+  }, [role, matchMode, sortMode, dateRange, excludeMeta, excludeSubagents, excludeTools, tagFilter])
 
   const resetFilters = useCallback(() => {
     setRole('')
@@ -231,11 +254,13 @@ export default function App() {
     setDateRange('all')
     setExcludeMeta(true)
     setExcludeSubagents(false)
+    setExcludeTools(true)
+    setTagFilter(undefined)
   }, [])
 
   useEffect(() => {
     setActiveResult(-1)
-  }, [query, searchScope, projectId, hits])
+  }, [query, searchScope, projectId, tagFilter, hits])
 
   useEffect(() => {
     if (tab !== 'search') return
@@ -273,11 +298,13 @@ export default function App() {
     const tabCmds: Command[] = (
       [
         ['search', 'nav.search'],
+        ['prompts', 'nav.prompts'],
         ['files', 'nav.files'],
         ['favorites', 'nav.favorites'],
         ['templates', 'nav.templates'],
         ['stats', 'nav.stats'],
         ['export', 'nav.export'],
+        ['settings', 'nav.settings'],
       ] as const
     ).map(([k, labelKey]) => ({
       id: `tab:${k}`,
@@ -322,9 +349,11 @@ export default function App() {
       void loadProjects()
       void loadRecentSessions()
       void loadRecentPlans()
+      setRefreshKey((k) => k + 1)
       void (async () => {
         const p = searchParamsRef.current
-        if (!p.query.trim()) {
+        const seq = ++searchSeq.current
+        if (!p.query.trim() && p.tagFilter == null) {
           setHits([])
           return
         }
@@ -335,12 +364,14 @@ export default function App() {
           limit: 120,
           excludeMeta: p.excludeMeta,
           excludeSubagents: p.excludeSubagents,
+          excludeTools: p.excludeTools,
+          tagId: p.tagFilter,
           scope: p.searchScope,
           matchMode: p.matchMode,
           sort: p.sortMode,
           sinceMs: sinceMsFor(p.dateRange),
         })
-        setHits(raw)
+        if (seq === searchSeq.current && raw) setHits(raw)
       })()
     })
     return off
@@ -394,10 +425,43 @@ export default function App() {
       excludeMeta,
       excludeSubagents,
     })
+    setExportFormat(format)
     setExportText(text)
     setTab('export')
     setStatus(t('toast.exported'))
   }
+
+  const deleteTag = async (id: number) => {
+    if (confirmDeleteTag !== id) {
+      setConfirmDeleteTag(id)
+      return
+    }
+    setConfirmDeleteTag(null)
+    await window.vault.tagDelete(id)
+    if (tagFilter === id) setTagFilter(undefined)
+    setStatus(t('toast.tagDeleted'))
+    await loadTags()
+    await runSearch()
+  }
+
+  /** Large bodies arrive clamped; copy and template actions fetch the full text. */
+  const fullBody = async (h: { messageId: number; body: string; bodyTruncated: boolean }) =>
+    h.bodyTruncated ? window.vault.messageBody(h.messageId) : h.body
+
+  const toggleFavorite = async (h: { messageId: number; msgKey: string; isFavorite: boolean }) => {
+    if (h.isFavorite) {
+      await window.vault.favoriteRemove(h.msgKey)
+      setStatus(t('toast.unfavorited'))
+    } else {
+      await window.vault.favoriteAdd(h.messageId)
+      setStatus(t('toast.favorited'))
+    }
+    setHits((prev) =>
+      prev.map((x) => (isMessageHit(x) && x.msgKey === h.msgKey ? { ...x, isFavorite: !h.isFavorite } : x)),
+    )
+  }
+
+  const archivedSessions = useMemo(() => projects.reduce((n, p) => n + p.archivedCount, 0), [projects])
 
   const createTag = async () => {
     const name = newTag.trim()
@@ -555,6 +619,14 @@ export default function App() {
                           {p.tool}
                         </span>
                       ) : null}
+                      {p.archived || p.archivedCount > 0 ? (
+                        <span
+                          className="shrink-0 rounded border border-zinc-700 px-1 text-[9px] text-zinc-500"
+                          title={t('badge.archived.hint')}
+                        >
+                          {p.archived ? t('badge.archived') : `${t('badge.archived')} ${p.archivedCount}`}
+                        </span>
+                      ) : null}
                       <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
                         {p.sessionCount}
                       </span>
@@ -609,15 +681,38 @@ export default function App() {
                     {t('search.filters')}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
                   </button>
                 </div>
-                <p className="mt-1.5 font-mono text-[11px] text-zinc-600">
-                  {query.trim()
-                    ? `${t('search.resultCount', { count: fuzzyHits.length })}${loading ? t('search.searching') : ''}`
-                    : t('search.emptyHint')}
-                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 font-mono text-[11px] text-zinc-600">
+                  <span>
+                    {query.trim() || tagFilter != null
+                      ? `${t('search.resultCount', { count: fuzzyHits.length })}${loading ? t('search.searching') : ''}`
+                      : t('search.emptyHint')}
+                  </span>
+                  {tagFilter != null && (
+                    <button
+                      type="button"
+                      onClick={() => setTagFilter(undefined)}
+                      title={t('search.tagFilter.clear')}
+                      className="rounded-[3px] border border-brand-line bg-brand-soft px-1.5 text-[10px] font-medium text-brand-text"
+                    >
+                      {t('search.tagFilter', { name: tags.find((x) => x.id === tagFilter)?.name ?? '' })} ×
+                    </button>
+                  )}
+                  {selected.size > 0 && (
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <span className="text-zinc-400">{t('search.selected', { count: selected.size })}</span>
+                      <button type="button" className={GHOST_BTN} onClick={() => setTab('export')}>
+                        {t('search.exportSelected')}
+                      </button>
+                      <button type="button" className={GHOST_BTN} onClick={() => setSelected(new Set())}>
+                        {t('search.clearSelection')}
+                      </button>
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {loading && <p className="p-3 font-mono text-[11px] text-zinc-500">{t('search.loading')}</p>}
-                {!loading && query.trim() === '' && searchScope !== 'plans' && recentSessions.length > 0 && (
+                {!loading && query.trim() === '' && tagFilter == null && searchScope !== 'plans' && recentSessions.length > 0 && (
                   <section className="p-3">
                     <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{t('search.recentSessions')}</h3>
                     <ul className="space-y-1">
@@ -639,6 +734,14 @@ export default function App() {
                               <span className="min-w-0 truncate text-[13px] font-medium text-white">
                                 {sidebarPrimaryLabel(s.projectName)}
                               </span>
+                              {s.archived ? (
+                                <span
+                                  className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[10px] text-amber-700"
+                                  title={t('badge.archived.hint')}
+                                >
+                                  {t('badge.archived')}
+                                </span>
+                              ) : null}
                               <span className="ml-auto shrink-0 font-mono text-[11px] tabular text-zinc-600">
                                 {new Date(s.mtime).toLocaleDateString(BCP47[locale])}
                               </span>
@@ -657,7 +760,7 @@ export default function App() {
                     </ul>
                   </section>
                 )}
-                {!loading && query.trim() === '' && searchScope !== 'messages' && recentPlans.length > 0 && (
+                {!loading && query.trim() === '' && tagFilter == null && searchScope !== 'messages' && recentPlans.length > 0 && (
                   <section className="px-3 pb-3">
                     <h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">{t('search.recentPlans')}</h3>
                     <ul className="space-y-1">
@@ -691,9 +794,11 @@ export default function App() {
                     </ul>
                   </section>
                 )}
-                {!loading && query.trim() !== '' && fuzzyHits.length === 0 && (
+                {!loading && (query.trim() !== '' || tagFilter != null) && fuzzyHits.length === 0 && (
                   <div className="m-3 rounded-md border border-dashed border-zinc-700 px-5 py-10 text-center">
-                    <p className="text-sm font-medium text-white">{t('search.noResults')}</p>
+                    <p className="text-sm font-medium text-white">
+                      {query.trim() ? t('search.noResults') : t('search.tagged.empty')}
+                    </p>
                     <p className="mt-1 text-xs text-zinc-500">
                       {t('search.noResults.hint')}
                     </p>
@@ -734,7 +839,13 @@ export default function App() {
                                 : 'bg-zinc-800 text-zinc-500'
                             }`}
                           >
-                            {h.role === 'user' ? 'me' : h.role === 'assistant' ? 'ai' : h.role}
+                            {h.role === 'user'
+                              ? t('role.badge.user')
+                              : h.role === 'assistant'
+                                ? t('role.badge.assistant')
+                                : h.role === 'tool'
+                                  ? t('role.badge.tool')
+                                  : h.role}
                           </span>
                           <span className="truncate font-sans font-medium text-zinc-300" title={h.projectSlug}>
                             {sidebarPrimaryLabel(h.projectName || h.projectSlug)}
@@ -748,6 +859,15 @@ export default function App() {
                               {t(messageClassKey(h.messageClass)!)}
                             </span>
                           ) : null}
+                          {h.archived ? (
+                            <span
+                              className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700"
+                              title={t('badge.archived.hint')}
+                            >
+                              {t('badge.archived')}
+                            </span>
+                          ) : null}
+                          {h.isFavorite ? <span className="text-brand-text">★</span> : null}
                         </div>
                         {/* Row actions stay out of the way until the row is
                             hovered or keyboard-selected — density first. */}
@@ -770,7 +890,10 @@ export default function App() {
                           <button
                             type="button"
                             className={GHOST_BTN}
-                            onClick={() => window.vault.copyText(h.body)}
+                            onClick={async () => {
+                              await window.vault.copyText(await fullBody(h))
+                              setStatus(t('toast.copied'))
+                            }}
                           >
                             {t('action.copy')}
                           </button>
@@ -791,19 +914,17 @@ export default function App() {
                           <button
                             type="button"
                             className={GHOST_BTN}
-                            onClick={async () => {
-                              await window.vault.favoriteAdd(h.messageId)
-                              setStatus(t('toast.favorited'))
-                            }}
+                            onClick={() => void toggleFavorite(h)}
                           >
-                            {t('action.favorite')}
+                            {h.isFavorite ? t('action.unfavorite') : t('action.favorite')}
                           </button>
                           <button
                             type="button"
                             className={GHOST_BTN}
                             onClick={async () => {
-                              const name = h.body.slice(0, 40).replace(/\s+/g, ' ').trim() || t('nav.templates')
-                              await window.vault.templateCreate(name, h.body)
+                              const body = await fullBody(h)
+                              const name = body.slice(0, 40).replace(/\s+/g, ' ').trim() || t('nav.templates')
+                              await window.vault.templateCreate(name, body)
                               setStatus(t('toast.templated'))
                             }}
                           >
@@ -815,7 +936,7 @@ export default function App() {
                       <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.55] text-zinc-400 [overflow-wrap:anywhere]">
                         {h.body}
                       </p>
-                      <TagEditor messageId={h.messageId} tags={tags} onChange={loadTags} />
+                      <TagEditor msgKey={h.msgKey} tagIds={h.tagIds} tags={tags} onChange={loadTags} />
                     </article>
                   ),
                 )}
@@ -824,58 +945,35 @@ export default function App() {
           )}
 
           {tab === 'favorites' && (
-            <div className="h-full overflow-y-auto p-4">
-              <h2 className="mb-3 text-sm font-semibold text-white">{t('nav.favorites')}</h2>
-              <div className="space-y-3">
-                {favorites.length === 0 && <p className="text-sm text-zinc-500">{t('favorites.empty')}</p>}
-                {favorites.map((f) => (
-                  <div
-                    key={f.id}
-                    className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-sm"
-                  >
-                    <div className="mb-1 text-xs text-zinc-500">
-                      {f.projectSlug} · {f.sessionFile} · {f.role}
-                    </div>
-                    <pre className="mb-2 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
-                      {f.body}
-                    </pre>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="rounded-md border border-sky-800/80 bg-sky-950/40 px-2 py-1 text-xs text-sky-100"
-                        onClick={() =>
-                          setTranscriptOpen({
-                            sessionId: f.sessionId,
-                            sessionFile: f.sessionFile,
-                            projectLabel: f.projectSlug,
-                            highlightLine: -1,
-                          })
-                        }
-                      >
-                        {t('transcript.title')}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
-                        onClick={() => window.vault.copyText(f.body)}
-                      >
-                        {t('action.copy')}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
-                        onClick={async () => {
-                          await window.vault.favoriteRemove(f.messageId)
-                          await loadFavorites()
-                        }}
-                      >
-                        {t('action.remove')}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <FavoritesTab
+              favorites={favorites}
+              tags={tags}
+              onOpenSession={setTranscriptOpen}
+              onRemoved={() => void loadFavorites()}
+              onTagsChanged={() => {
+                void loadTags()
+                void loadFavorites()
+              }}
+              onStatus={setStatus}
+            />
+          )}
+
+          {tab === 'prompts' && (
+            <PromptsTab
+              projectId={projectId}
+              onOpenSession={setTranscriptOpen}
+              onStatus={setStatus}
+              refreshKey={refreshKey}
+            />
+          )}
+
+          {tab === 'settings' && (
+            <SettingsTab
+              update={update}
+              archivedSessions={archivedSessions}
+              onStatus={setStatus}
+              onChanged={() => void loadProjects()}
+            />
           )}
 
           {tab === 'files' && <FilesTab onOpenSession={setTranscriptOpen} />}
@@ -887,55 +985,18 @@ export default function App() {
           )}
 
           {tab === 'export' && (
-            <div className="flex h-full flex-col gap-3 p-4">
-              <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-zinc-400">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={excludeMeta}
-                    onChange={(e) => setExcludeMeta(e.target.checked)}
-                  />
-                  {t('export.excludeMeta')}
-                </label>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={excludeSubagents}
-                    onChange={(e) => setExcludeSubagents(e.target.checked)}
-                  />
-                  {t('export.excludeSubagents')}
-                </label>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="rounded-md bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900"
-                  onClick={() => doExport('md')}
-                >
-                  {t('export.markdown')}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200"
-                  onClick={() => doExport('csv')}
-                >
-                  {t('export.csv')}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200"
-                  onClick={() => exportText && window.vault.copyText(exportText)}
-                >
-                  {t('export.copyResult')}
-                </button>
-              </div>
-              <textarea
-                readOnly
-                className="min-h-0 flex-1 resize-none rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-200"
-                value={exportText}
-                placeholder={t('export.placeholder')}
-              />
-            </div>
+            <ExportTab
+              selectedCount={selected.size}
+              excludeMeta={excludeMeta}
+              excludeSubagents={excludeSubagents}
+              onExcludeMeta={setExcludeMeta}
+              onExcludeSubagents={setExcludeSubagents}
+              exportText={exportText}
+              exportFormat={exportFormat}
+              onExport={(f) => void doExport(f)}
+              onClearSelection={() => setSelected(new Set())}
+              onStatus={setStatus}
+            />
           )}
         </main>
 
@@ -1063,6 +1124,19 @@ export default function App() {
                       <span className="block text-[11px] text-zinc-500">{t('inspector.exclude.subagentsHelp')}</span>
                     </span>
                   </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={excludeTools}
+                      disabled={searchScope === 'plans'}
+                      onChange={(e) => setExcludeTools(e.target.checked)}
+                      className="mt-0.5 accent-brand"
+                    />
+                    <span>
+                      {t('inspector.exclude.tools')}
+                      <span className="block text-[11px] text-zinc-500">{t('inspector.exclude.toolsHelp')}</span>
+                    </span>
+                  </label>
                 </div>
               </Field>
 
@@ -1087,30 +1161,50 @@ export default function App() {
                   </button>
                 </div>
                 {tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {tags.map((tag) => (
-                      <span
-                        key={tag.id}
-                        className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-400"
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.map((tag) => {
+                        const on = tagFilter === tag.id
+                        return (
+                          <span
+                            key={tag.id}
+                            className={`flex items-center rounded-full border text-[11px] ${
+                              on ? 'border-brand-line bg-brand-soft text-brand-text' : 'border-zinc-800 bg-zinc-950 text-zinc-400'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => setTagFilter(on ? undefined : tag.id)}
+                              className="py-0.5 pl-2 pr-1"
+                            >
+                              {tag.name} <span className="tabular text-zinc-600">{tag.count}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deleteTag(tag.id)}
+                              aria-label={t('inspector.tags.delete')}
+                              title={t('inspector.tags.delete')}
+                              className={`py-0.5 pl-0.5 pr-2 ${confirmDeleteTag === tag.id ? 'text-red-500' : 'text-zinc-600 hover:text-zinc-300'}`}
+                            >
+                              {confirmDeleteTag === tag.id ? t('inspector.tags.confirmDelete') : '×'}
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                    <p className="text-[11px] text-zinc-600">{t('inspector.tags.filterHint')}</p>
+                  </>
                 )}
               </Field>
 
               {searchScope !== 'messages' && (
                 <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-700">
-                  플랜은 <code>~/.claude/plans</code> 아래 Markdown만 대상입니다. 왼쪽 프로젝트 필터는
-                  대화 검색에만 적용됩니다.
+                  {t('inspector.plansNote', { path: '~/.claude/plans' })}
                 </p>
               )}
               {searchScope === 'all' && (
-                <p className="text-[11px] leading-relaxed text-zinc-500">
-                  「전체」는 대화 히트를 먼저, 이어서 플랜 히트를 보여줍니다. 두 점수는 서로 비교되지
-                  않습니다.
-                </p>
+                <p className="text-[11px] leading-relaxed text-zinc-500">{t('inspector.allScopeNote')}</p>
               )}
             </div>
           </aside>
