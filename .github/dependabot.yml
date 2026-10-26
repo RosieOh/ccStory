@@ -8,6 +8,11 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
+    # A new major waits 30 days (x.0.0 releases ship regressions; Electron's previous
+    # major stays supported meanwhile). Patches inside a major still come within a week.
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
     allow:
       - dependency-name: electron
       - dependency-name: electron-updater
@@ -23,6 +28,8 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: 'CHORE'
     labels: ['type: chore', 'area: ci']
