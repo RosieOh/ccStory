@@ -146,6 +146,10 @@ User data (never derivable — never dropped by a migration):
 - `templates`.
 - `model_prices` — per-model USD/MTok incl. `cache_write_1h_per_mtok`; seeded from
   `shared/pricing.ts`, user edits win (see Cost estimation).
+- `app_opens` — local `YYYY-MM-DD` days the app was launched or focused (one row per
+  day, written by main). Stats shows the last four Monday-started weeks against the
+  roadmap's three-days-a-week bar (`shared/appOpens.ts`). Dates only; not telemetry —
+  nothing is sent.
 - `meta` — `schema_version`, `prices_seed_version`, settings as `setting.*`
   (`archiveMode`, `autoUpdate`, `backupKeep`).
 

@@ -36,7 +36,8 @@ Recommended path: **decide with data after four weeks of dogfooding, and validat
 with a free step before paying for signing.**
 
 1. **Weeks 1–4 — personal tool.** Use the current build daily. Go/no-go criteria:
-   - you opened it on ≥3 days a week (the Stats tab's prompts-per-day helps you check);
+   - you opened it on ≥3 days a week (Stats → "Days you opened Vault" shows each of the last
+     four weeks; prompts-per-day measures Claude Code, not Vault);
    - it answered at least one "how did I do X?" you could not have answered otherwise
      (e.g. from an archived session);
    - no lost favorites, no frozen window, no wrong numbers on your corpus.
