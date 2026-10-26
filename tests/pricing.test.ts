@@ -8,12 +8,13 @@ import {
 } from '../shared/pricing'
 import { sanitizePrices } from '../electron/ipcGuards'
 
-const price = (model: string, i: number, o: number, cr = 0, cw = 0): ModelPrice => ({
+const price = (model: string, i: number, o: number, cr = 0, cw = 0, cw1h = 0): ModelPrice => ({
   model,
   inputPerMTok: i,
   outputPerMTok: o,
   cacheReadPerMTok: cr,
   cacheWritePerMTok: cw,
+  cacheWrite1hPerMTok: cw1h,
 })
 
 describe('findPrice', () => {
@@ -87,7 +88,8 @@ describe('sanitizePrices', () => {
     const [row] = sanitizePrices([
       { model: 'm', inputPerMTok: 'abc', outputPerMTok: -5, cacheReadPerMTok: null, cacheWritePerMTok: 1 },
     ])
-    expect(row).toEqual(price('m', 0, 0, 0, 1))
+    // A missing 1-hour rate falls back to the published 2x-input ratio (0 here).
+    expect(row).toEqual(price('m', 0, 0, 0, 1, 0))
   })
 
   it('clamps absurd rates instead of dropping the row', () => {
@@ -107,5 +109,28 @@ describe('sanitizePrices', () => {
   it('returns an empty list for non-array input', () => {
     expect(sanitizePrices(null)).toEqual([])
     expect(sanitizePrices('nope')).toEqual([])
+  })
+})
+
+describe('current models and cache TTLs', () => {
+  it('prices the models Claude Code records today', () => {
+    expect(findPrice('claude-opus-5-5', DEFAULT_PRICES)?.inputPerMTok).toBe(4)
+    // `claude-opus-5` must not swallow `claude-opus-5-5` (longest prefix wins).
+    expect(findPrice('claude-opus-5', DEFAULT_PRICES)?.inputPerMTok).toBe(5)
+    expect(findPrice('claude-fable-5-1', DEFAULT_PRICES)?.cacheReadPerMTok).toBe(0.25)
+    expect(findPrice('claude-haiku-5-5', DEFAULT_PRICES)?.outputPerMTok).toBe(0.5)
+  })
+
+  it('bills 1-hour cache writes at their own rate', () => {
+    const p = [price('m', 10, 0, 0, 12.5, 20)]
+    // 1M cache-write tokens, 400K of them with the 1-hour TTL.
+    const cost = costOf('m', { input: 0, output: 0, cacheRead: 0, cacheCreation: 1_000_000, cacheCreation1h: 400_000 }, p)
+    expect(cost).toBeCloseTo(0.6 * 12.5 + 0.4 * 20)
+  })
+
+  it('never returns NaN for a row missing the 1-hour rate', () => {
+    const legacy = { ...price('m', 10, 0), cacheWrite1hPerMTok: undefined as unknown as number }
+    const cost = costOf('m', { input: 0, output: 0, cacheRead: 0, cacheCreation: 1_000_000, cacheCreation1h: 1_000_000 }, [legacy])
+    expect(cost).toBeCloseTo(20)
   })
 })

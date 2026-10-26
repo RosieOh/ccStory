@@ -66,6 +66,7 @@ describe('parseJsonlLine', () => {
       outputTokens: 450,
       cacheReadTokens: 21088,
       cacheCreationTokens: 9534,
+      cacheCreation1hTokens: null,
     })
   })
 
@@ -293,6 +294,7 @@ describe('extractUsage', () => {
       outputTokens: null,
       cacheReadTokens: null,
       cacheCreationTokens: null,
+      cacheCreation1hTokens: null,
     })
     expect(extractUsage({})).toBeNull()
     expect(extractUsage(null)).toBeNull()
