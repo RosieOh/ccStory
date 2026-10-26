@@ -1,6 +1,6 @@
 # ADR-0002: SQLite FTS5 indexing strategy
 
-- Status: Accepted
+- Status: Accepted — the re-index strategy (mtime + delete/re-insert) is superseded by [ADR-0006](0006-stable-keys-append-indexing-archive.md)
 - Date: 2026-04-14
 
 ## Context
@@ -22,4 +22,4 @@ Search uses FTS `MATCH` with token-prefix boolean queries; on failure, fall back
 
 - **Positive:** Mature query language, BM25 ranking, snippet support, single-file DB for app metadata + index.
 - **Negative:** Native module complicates build (`electron-builder install-app-deps`, `asarUnpack` for `.node`).
-- **Follow-up:** Consider background indexing queue if users report UI stalls on huge corpora.
+- **Follow-up:** Consider background indexing queue if users report UI stalls on huge corpora. → Done in [ADR-0007](0007-worker-threads.md).
