@@ -1,11 +1,21 @@
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
-import type { IndexProgress, ReindexResult } from '../shared/ipc.js'
+import type { BackupFile, BackupReason, IndexProgress, ReindexResult } from '../shared/ipc.js'
 import type { WatchEventKind, WorkerInbound, WorkerOutbound } from './workerProtocol.js'
 
 declare const __dirname: string
 
 type Pending<T> = { resolve: (v: T) => void; reject: (e: Error) => void }
+
+/** A snapshot the worker could not write; `disk` means there was not enough free space. */
+export class BackupFailed extends Error {
+  constructor(
+    readonly code: 'disk' | 'failed',
+    message: string,
+  ) {
+    super(message)
+  }
+}
 
 /**
  * Main-process handle on the index worker: request/response for scans,
@@ -16,6 +26,7 @@ export class IndexService {
   private worker: Worker | null = null
   private nextId = 1
   private scans = new Map<number, Pending<ReindexResult>>()
+  private backups = new Map<number, Pending<BackupFile>>()
   private stopping = false
   /** Crash-restart budget, so a worker that cannot open the DB does not spin forever. */
   private restarts = 0
@@ -39,8 +50,9 @@ export class IndexService {
     worker.on('exit', (code) => {
       this.worker = null
       const err = new Error(`index worker exited (${code})`)
-      for (const p of this.scans.values()) p.reject(err)
+      for (const p of [...this.scans.values(), ...this.backups.values()]) p.reject(err)
       this.scans.clear()
+      this.backups.clear()
       if (!this.stopping && code !== 0 && this.restarts++ < 3) this.start()
     })
     this.worker = worker
@@ -62,6 +74,14 @@ export class IndexService {
       case 'done':
         this.scans.get(m.id)?.resolve(m.result)
         this.scans.delete(m.id)
+        break
+      case 'backupDone':
+        this.backups.get(m.id)?.resolve(m.file)
+        this.backups.delete(m.id)
+        break
+      case 'backupFailed':
+        this.backups.get(m.id)?.reject(new BackupFailed(m.code, m.message))
+        this.backups.delete(m.id)
         break
       case 'error': {
         const err = new Error(m.message)
@@ -85,6 +105,15 @@ export class IndexService {
     return new Promise((resolve, reject) => {
       this.scans.set(id, { resolve, reject })
       this.send({ type: 'scan', id, reparse })
+    })
+  }
+
+  /** Snapshot of the vault DB into `dir`, queued behind any running scan. */
+  backup(dir: string, reason: BackupReason): Promise<BackupFile> {
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      this.backups.set(id, { resolve, reject })
+      this.send({ type: 'backup', id, dir, reason })
     })
   }
 
