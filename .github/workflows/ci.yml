@@ -7,8 +7,14 @@ on:
     branches: [main]
 
 jobs:
+  # Tests run on every OS the installers target (paths, line endings, file locking differ);
+  # typecheck, lint and the bundle build are OS-independent, so they run once.
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +29,15 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Typecheck (main / preload / shared)
+        if: runner.os == 'Linux'
         run: npx tsc -p tsconfig.node.json
 
       - name: Typecheck (renderer)
+        if: runner.os == 'Linux'
         run: npx tsc -p tsconfig.json
 
       - name: Lint
+        if: runner.os == 'Linux'
         run: npm run lint
 
       - name: Unit tests
@@ -38,11 +47,12 @@ jobs:
         run: npm run test:db
 
       - name: Renderer build
+        if: runner.os == 'Linux'
         run: npx vite build
 
   # Launches the built app against tests/e2e/fixtures and drives it (tests/e2e/smoke.mjs).
   # The only job that starts Electron, so it is the one that catches a broken main bundle,
-  # worker path, preload or CSP — and the only place the app runs on Windows and Linux.
+  # worker path, preload or CSP.
   e2e:
     strategy:
       fail-fast: false
