@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ModelTokenRow, StatsPayload } from '../../shared/ipc'
-import { PRICES_AS_OF, costOf, formatUsd, type ModelPrice } from '../../shared/pricing'
+import { OPENAI_PRICES_AS_OF, PRICES_AS_OF, costOf, formatUsd, type ModelPrice } from '../../shared/pricing'
 import { BCP47 } from '../../shared/i18n'
 import { useI18n, useT } from '../i18n'
 import { GHOST_BTN } from '../ui'
@@ -458,7 +458,7 @@ function CostPanel({
         <div className="flex flex-col gap-3 rounded-2xl bg-well p-4">
           <div>
             <h3 className="text-[14px] font-semibold text-ink-1">{t('cost.prices.title')}</h3>
-            <p className="text-[12.5px] text-ink-3">{t('cost.prices.note', { date: PRICES_AS_OF })}</p>
+            <p className="text-[12.5px] text-ink-3">{t('cost.prices.note', { date: PRICES_AS_OF, openaiDate: OPENAI_PRICES_AS_OF })}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="table min-w-[680px]">
