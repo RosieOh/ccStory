@@ -5,6 +5,7 @@ import { BCP47 } from '../../shared/i18n'
 import { useI18n, useT } from '../i18n'
 import { GHOST_BTN } from '../ui'
 import { formatCompact } from '../format'
+import { openWeeks, TARGET_DAYS_PER_WEEK } from '../../shared/appOpens'
 
 type CostRow = { model: string; cost: number | null }
 
@@ -78,6 +79,61 @@ function continuousDays(days: { day: string; count: number }[]): { day: string; 
  * Prompts per day as thin columns from a shared baseline, with hairline gridlines at
  * clean values, a hover tooltip, and a table view so no value is hover-only.
  */
+/**
+ * The roadmap's dogfooding check, "opened it on at least three days a week", measured
+ * from the local `app_opens` dates: one row of seven cells per week, oldest first.
+ */
+function OpenDaysPanel({ days }: { days: string[] }) {
+  const { locale, t } = useI18n()
+  const weeks = useMemo(() => openWeeks(days, new Date()), [days])
+  const met = weeks.filter((w) => w.count >= TARGET_DAYS_PER_WEEK).length
+  const fmt = (d: string, opts: Intl.DateTimeFormatOptions) =>
+    new Date(`${d}T00:00:00`).toLocaleDateString(BCP47[locale], opts)
+
+  return (
+    <section className="glass panel flex flex-col gap-4 p-5">
+      <div>
+        <h2 className="section-title">{t('stats.opens.title')}</h2>
+        <p className="section-desc">{t('stats.opens.desc', { target: TARGET_DAYS_PER_WEEK })}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {weeks.map((w, i) => (
+          <div key={w.start} className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
+              <span className="text-ink-3">
+                {i === weeks.length - 1 ? t('stats.opens.thisWeek') : t('stats.opens.weekOf', { date: fmt(w.start, { month: 'short', day: 'numeric' }) })}
+              </span>
+              <span className="tabular font-semibold text-ink-1">{t('stats.opens.days', { count: w.count })}</span>
+            </div>
+            <div className="flex gap-1" role="list" aria-label={t('stats.opens.weekOf', { date: fmt(w.start, { month: 'long', day: 'numeric' }) })}>
+              {w.days.map((d) => {
+                const label = `${fmt(d.day, { month: 'short', day: 'numeric', weekday: 'short' })} · ${
+                  d.future ? t('stats.opens.future') : d.opened ? t('stats.opens.opened') : t('stats.opens.notOpened')
+                }`
+                return (
+                  <span
+                    key={d.day}
+                    role="listitem"
+                    title={label}
+                    aria-label={label}
+                    className={`h-3.5 flex-1 rounded-[4px] ${
+                      d.opened ? 'bg-brand' : d.future ? 'border border-dashed border-line' : 'bg-well'
+                    }`}
+                  />
+                )
+              })}
+            </div>
+            {w.count >= TARGET_DAYS_PER_WEEK && <span className="badge tone-green self-start">{t('stats.opens.met')}</span>}
+          </div>
+        ))}
+      </div>
+      <p className="text-[13px] text-ink-3">
+        {t('stats.opens.summary', { met, weeks: weeks.length, target: TARGET_DAYS_PER_WEEK })}
+      </p>
+    </section>
+  )
+}
+
 function ActivityChart({ days }: { days: { day: string; count: number }[] }) {
   const { locale, t } = useI18n()
   const [hover, setHover] = useState<number | null>(null)
@@ -237,6 +293,8 @@ export function StatsTab({ stats }: { stats: StatsPayload | null }) {
       </div>
 
       {stats.activityByDay.length > 0 && <ActivityChart days={stats.activityByDay} />}
+
+      <OpenDaysPanel days={stats.appOpenDays} />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <section className="glass panel flex flex-col gap-4 p-5">
