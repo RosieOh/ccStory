@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Liquid-glass UI ([ADR-0009](docs/decisions/0009-glass-visual-system.md))
+
+The interface now matches the owner's other tools instead of a generic console look:
+
+- Translucent glass panels over a soft lit background; a floating icon rail (settings and
+  theme in its footer) replaces the sidebar; a page header with a status pill (index
+  state, ⌘K, re-index); a toast replaces the status bar.
+- The project filter is a searchable picker in the toolbar (it used to take a third of
+  the width as a permanent list).
+- Search results, prompts, files, favorites and templates are rows inside glass panels;
+  FTS hits are highlighted (`«…»` markers render as highlights).
+- Stats: four stat tiles (prompts, sessions, messages, estimated cost), a prompts-per-day
+  column chart with a continuous time axis, tooltip and table view, thin single-colour
+  bars for models, roles and cost.
+- Pretendard Variable is bundled (no network); light/dark follows the OS until chosen and
+  is set before first paint; the switch spreads from the button where supported.
+- Korean copy is 해요체 throughout and uses "색인" for indexing; the language switch moved
+  to Settings.
+- Template and archive deletion ask for a second click.
+- Checked on the built app against a real 5 GB index, both themes, screenshots rendered
+  in sRGB (`--force-color-profile=srgb`; without it macOS returns display-space pixels,
+  e.g. #808080 → #757575): every measured text element ≥ 4.5:1 (lowest 4.73:1), with a
+  #aaa-on-#fff control reading 2.32:1 as a self-check of the measurement. Idle CPU with
+  the static background: 2.2% of one core (27% when the background drifted).
+
 ### Trust fixes from a real-corpus audit (2026-10-26)
 
 Audited on one heavy user's machine: 46 projects, 855 transcripts, 5.2 GB, largest file
