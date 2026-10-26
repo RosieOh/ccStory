@@ -1,208 +1,344 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DbHandle } from './db.js'
-import type { DiscoveredProject, ToolAdapter } from './adapters.js'
-import { listAllJsonlForProject, readProjectDisplayTitle } from './claudeLayout.js'
+import { getSetting } from './db.js'
+import type { DiscoveredProject, LineParser, ToolAdapter } from './adapters.js'
+import { fingerprint, readLines } from './lineReader.js'
 import { basenameOf, parseJsonlLine } from '../shared/jsonlParse.js'
 
 export { defaultClaudeProjectsRoot } from './claudeRoots.js'
 
-/** All JSONL transcripts for a Claude project (root UUID files, subagents, agent-transcripts, index). */
-export function listJsonlSessions(projectRoot: string): string[] {
-  return listAllJsonlForProject(projectRoot)
+/**
+ * What happens to indexed rows when their source file disappears. `keep` (default)
+ * marks them archived — Claude Code deletes old transcripts on its own schedule, and
+ * keeping them is the point of a vault. `mirror` deletes them like the source.
+ */
+export type ArchiveMode = 'keep' | 'mirror'
+
+export function archiveModeOf(db: DbHandle): ArchiveMode {
+  return getSetting(db, 'archiveMode') === 'mirror' ? 'mirror' : 'keep'
 }
 
-export function listProjectDirs(claudeProjectsRoot: string): { slug: string; root: string }[] {
-  if (!fs.existsSync(claudeProjectsRoot)) return []
-  const entries = fs.readdirSync(claudeProjectsRoot, { withFileTypes: true })
-  return entries
-    .filter((e) => e.isDirectory())
-    .map((e) => ({
-      slug: e.name,
-      root: path.join(claudeProjectsRoot, e.name),
-    }))
-}
+/** Lines written per transaction — bounds how long the write lock is held. */
+const BATCH_LINES = 2000
+
+/** Lets a long file yield between batches so other work (stats, new events) interleaves. */
+export type Yield = () => Promise<void>
+const noYield: Yield = async () => {}
 
 export function upsertProject(
   db: DbHandle,
-  slug: string,
-  root: string,
-  opts?: { tool?: string; displayName?: string },
+  project: DiscoveredProject,
+  tool: string,
 ): number {
-  const tool = opts?.tool ?? 'claude'
-  const displayName = opts?.displayName ?? readProjectDisplayTitle(root, slug)
-  const mtime = fs.statSync(root).mtimeMs
+  const mtime = fs.statSync(project.root).mtimeMs
   db.prepare(
-    `INSERT INTO projects (slug, root_path, display_name, last_modified, tool)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO projects (slug, root_path, display_name, last_modified, tool, archived_at)
+     VALUES (?, ?, ?, ?, ?, NULL)
      ON CONFLICT(slug) DO UPDATE SET
        root_path = excluded.root_path,
-       display_name = excluded.display_name,
+       -- A slug guess must not overwrite a title already refined from the transcripts.
+       display_name = CASE WHEN ? THEN projects.display_name ELSE excluded.display_name END,
        last_modified = excluded.last_modified,
-       tool = excluded.tool`,
-  ).run(slug, root, displayName, Math.trunc(mtime), tool)
-  const row = db.prepare(`SELECT id FROM projects WHERE slug = ?`).get(slug) as { id: number }
+       tool = excluded.tool,
+       archived_at = NULL`,
+  ).run(project.slug, project.root, project.displayName, Math.trunc(mtime), tool, project.displayNameIsGuess ? 1 : 0)
+  const row = db.prepare(`SELECT id FROM projects WHERE slug = ?`).get(project.slug) as { id: number }
   return row.id
 }
 
-export function indexSessionFileSync(db: DbHandle, projectId: number, projectRoot: string, filePath: string): void {
+/** Replace a slug-derived project title with the working directory its transcripts recorded. */
+export function refineDisplayName(db: DbHandle, projectId: number, project: DiscoveredProject): void {
+  if (!project.displayNameIsGuess) return
+  const row = db
+    .prepare(
+      `SELECT m.cwd FROM messages m JOIN sessions s ON s.id = m.session_id
+       WHERE s.project_id = ? AND m.cwd IS NOT NULL AND m.cwd != ''
+       ORDER BY m.id DESC LIMIT 1`,
+    )
+    .get(projectId) as { cwd: string } | undefined
+  if (row) db.prepare(`UPDATE projects SET display_name = ? WHERE id = ?`).run(row.cwd, projectId)
+}
+
+type SessionState = {
+  id: number
+  file_mtime_ms: number
+  size_bytes: number
+  indexed_bytes: number
+  head_hash: string | null
+  tail_hash: string | null
+  message_count: number
+  archived_at: number | null
+}
+
+export type IndexFileResult = { added: number; mode: 'skip' | 'append' | 'full' }
+
+/**
+ * Index one transcript file. Claude Code only ever appends to a session file, so a
+ * file whose first bytes and whose bytes before the last indexed offset are unchanged
+ * is resumed from that offset — an active 400 MB session costs a few new lines per
+ * update instead of a full re-read. Anything else (shrunk, rewritten, stateful format)
+ * is re-read from the start; message rows are replaced but user data keyed on
+ * `msg_key` is untouched.
+ */
+export async function indexSessionFile(
+  db: DbHandle,
+  opts: {
+    projectId: number
+    projectRoot: string
+    filePath: string
+    createParser?: () => LineParser
+    appendable?: boolean
+    yieldNow?: Yield
+  },
+): Promise<IndexFileResult> {
+  const { projectId, projectRoot, filePath } = opts
+  const createParser = opts.createParser ?? (() => parseJsonlLine)
+  const appendable = opts.appendable ?? true
+  const yieldNow = opts.yieldNow ?? noYield
+
   const stat = fs.statSync(filePath)
   const mtime = Math.trunc(stat.mtimeMs)
+  const size = stat.size
   const rel = path.relative(projectRoot, filePath)
 
-  const existing = db
-    .prepare(`SELECT id, file_mtime_ms FROM sessions WHERE file_path = ?`)
-    .get(filePath) as { id: number; file_mtime_ms: number } | undefined
+  let row = db
+    .prepare(
+      `SELECT id, file_mtime_ms, size_bytes, indexed_bytes, head_hash, tail_hash, message_count, archived_at
+       FROM sessions WHERE file_path = ?`,
+    )
+    .get(filePath) as SessionState | undefined
 
-  if (existing && existing.file_mtime_ms === mtime) {
-    return
+  if (row && row.archived_at != null) {
+    // The source came back; it is live again.
+    db.prepare(`UPDATE sessions SET archived_at = NULL WHERE id = ?`).run(row.id)
+  }
+  if (row && row.indexed_bytes > 0 && row.indexed_bytes === size && row.file_mtime_ms === mtime) {
+    return { added: 0, mode: 'skip' }
   }
 
-  const delSession = db.prepare(`DELETE FROM sessions WHERE file_path = ?`)
-  const insSession = db.prepare(
-    `INSERT INTO sessions (project_id, rel_path, file_path, file_mtime_ms, message_count)
-     VALUES (?, ?, ?, ?, 0)`,
-  )
+  let start = 0
+  let lineIndex = 0
+  let mode: IndexFileResult['mode'] = 'full'
+  if (row && appendable && row.indexed_bytes > 0 && size >= row.indexed_bytes && row.head_hash) {
+    const fp = fingerprint(filePath, row.indexed_bytes)
+    if (fp.head === row.head_hash && fp.tail === row.tail_hash) {
+      start = row.indexed_bytes
+      lineIndex = row.message_count
+      mode = 'append'
+    }
+  }
+  if (mode === 'append' && start === size) {
+    db.prepare(`UPDATE sessions SET file_mtime_ms = ? WHERE id = ?`).run(mtime, row!.id)
+    return { added: 0, mode: 'skip' }
+  }
+
+  if (!row) {
+    const info = db
+      .prepare(
+        `INSERT INTO sessions (project_id, rel_path, file_path, file_mtime_ms, message_count, size_bytes, indexed_bytes)
+         VALUES (?, ?, ?, ?, 0, ?, 0)`,
+      )
+      .run(projectId, rel, filePath, mtime, size)
+    row = {
+      id: Number(info.lastInsertRowid),
+      file_mtime_ms: mtime,
+      size_bytes: size,
+      indexed_bytes: 0,
+      head_hash: null,
+      tail_hash: null,
+      message_count: 0,
+      archived_at: null,
+    }
+  } else if (mode === 'full') {
+    // Keep the session id stable (the UI may hold it); replace its rows.
+    db.transaction(() => {
+      db.prepare(`DELETE FROM messages WHERE session_id = ?`).run(row!.id)
+      db.prepare(
+        `UPDATE sessions SET project_id = ?, rel_path = ?, message_count = 0, indexed_bytes = 0,
+                head_hash = NULL, tail_hash = NULL WHERE id = ?`,
+      ).run(projectId, rel, row!.id)
+    })()
+  }
+  const sessionId = row.id
+
   const insMsg = db.prepare(
     `INSERT INTO messages
        (session_id, line_index, role, body, content_kinds, raw_preview, message_class,
-        ts_ms, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, is_sidechain,
-        cwd, git_branch)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ts_ms, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+        cache_creation_1h_tokens, is_sidechain, cwd, git_branch, msg_key, api_msg_id, request_id,
+        is_prompt, prompt_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-  const insFileRef = db.prepare(
-    `INSERT OR IGNORE INTO file_refs (message_id, path, basename) VALUES (?, ?, ?)`,
+  const insFileRef = db.prepare(`INSERT OR IGNORE INTO file_refs (message_id, path, basename) VALUES (?, ?, ?)`)
+  const updSession = db.prepare(
+    `UPDATE sessions SET indexed_bytes = ?, message_count = ?, size_bytes = ?, file_mtime_ms = ?,
+            head_hash = ?, tail_hash = ? WHERE id = ?`,
   )
 
-  const tx = db.transaction(() => {
-    delSession.run(filePath)
-    const info = insSession.run(projectId, rel, filePath, mtime)
-    const sessionId = Number(info.lastInsertRowid)
-    const content = fs.readFileSync(filePath, 'utf8')
-    const syncLines = content.split(/\r?\n/)
-    let idx = 0
-    for (const line of syncLines) {
-      const parsed = parseJsonlLine(line)
-      if (!parsed) continue
-      const body = parsed.text || parsed.rawPreview || ''
-      const kinds = JSON.stringify(parsed.contentKinds)
-      const u = parsed.usage
-      const info = insMsg.run(
-        sessionId,
-        idx,
-        parsed.role,
-        body,
-        kinds,
-        parsed.rawPreview,
-        parsed.messageClass,
-        parsed.tsMs,
-        parsed.model,
-        u?.inputTokens ?? null,
-        u?.outputTokens ?? null,
-        u?.cacheReadTokens ?? null,
-        u?.cacheCreationTokens ?? null,
-        parsed.isSidechain ? 1 : 0,
-        parsed.cwd,
-        parsed.gitBranch,
-      )
-      if (parsed.filePaths.length) {
-        const messageId = Number(info.lastInsertRowid)
-        for (const fp of parsed.filePaths) insFileRef.run(messageId, fp, basenameOf(fp))
+  const parse = createParser()
+  let batch: { parsed: NonNullable<ReturnType<LineParser>>; idx: number }[] = []
+  let consumed = start
+  let added = 0
+
+  const flush = () => {
+    const end = consumed
+    const fp = fingerprint(filePath, end)
+    db.transaction(() => {
+      for (const { parsed, idx } of batch) {
+        const u = parsed.usage
+        const info = insMsg.run(
+          sessionId,
+          idx,
+          parsed.role,
+          parsed.text || parsed.rawPreview || '',
+          JSON.stringify(parsed.contentKinds),
+          // Legacy column, never read: the body already holds the text (~100 MB on 5 GB).
+          null,
+          parsed.messageClass,
+          parsed.tsMs,
+          parsed.model,
+          u?.inputTokens ?? null,
+          u?.outputTokens ?? null,
+          u?.cacheReadTokens ?? null,
+          u?.cacheCreationTokens ?? null,
+          u?.cacheCreation1hTokens ?? null,
+          parsed.isSidechain ? 1 : 0,
+          parsed.cwd,
+          parsed.gitBranch,
+          parsed.uuid ?? `${filePath}#${idx}`,
+          parsed.apiMessageId,
+          parsed.requestId,
+          parsed.isPrompt ? 1 : 0,
+          parsed.promptText,
+        )
+        if (parsed.filePaths.length) {
+          const messageId = Number(info.lastInsertRowid)
+          for (const p of parsed.filePaths) insFileRef.run(messageId, p, basenameOf(p))
+        }
       }
-      idx += 1
-    }
-    db.prepare(`UPDATE sessions SET message_count = ? WHERE id = ?`).run(idx, sessionId)
-  })
+      updSession.run(end, lineIndex, size, mtime, fp.head, fp.tail, sessionId)
+    })()
+    added += batch.length
+    batch = []
+  }
 
-  tx()
+  for (const line of readLines(filePath, start)) {
+    if (line.end > size) break // bytes written after our stat; next event picks them up
+    const parsed = parse(line.text)
+    if (line.partial && parsed?.contentKinds.includes('invalid_json')) break // still being written
+    if (parsed) {
+      batch.push({ parsed, idx: lineIndex })
+      lineIndex += 1
+    }
+    consumed = line.end
+    if (batch.length >= BATCH_LINES) {
+      flush()
+      await yieldNow()
+    }
+  }
+  flush()
+  return { added, mode }
 }
 
 /**
- * Drop DB rows whose backing files/dirs no longer exist on disk. Session and
- * message/FTS rows cascade via FK + triggers, so removing a stale project or
- * session cleans up its descendants automatically.
+ * Reconcile rows whose backing file or directory is gone. Only runs for adapters
+ * whose root exists — an unmounted volume or a wrong CLAUDE_HOME must never read as
+ * "everything was deleted".
  */
-export function pruneMissingProjectsAndSessions(db: DbHandle): number {
-  let removed = 0
-  const sessions = db.prepare(`SELECT id, file_path FROM sessions`).all() as {
-    id: number
-    file_path: string
-  }[]
-  const delSession = db.prepare(`DELETE FROM sessions WHERE id = ?`)
+export function reconcileMissing(db: DbHandle, adapter: ToolAdapter, mode: ArchiveMode): number {
+  if (!adapter.isAvailable()) return 0
+  const now = Date.now()
+  let changed = 0
+  const sessions = db
+    .prepare(
+      `SELECT s.id, s.file_path FROM sessions s JOIN projects p ON p.id = s.project_id
+       WHERE p.tool = ? AND s.archived_at IS NULL`,
+    )
+    .all(adapter.id) as { id: number; file_path: string }[]
+  const archive = db.prepare(`UPDATE sessions SET archived_at = ? WHERE id = ?`)
+  const del = db.prepare(`DELETE FROM sessions WHERE id = ?`)
   for (const s of sessions) {
-    if (!fs.existsSync(s.file_path)) {
-      delSession.run(s.id)
-      removed += 1
-    }
+    if (fs.existsSync(s.file_path)) continue
+    if (mode === 'keep') archive.run(now, s.id)
+    else del.run(s.id)
+    changed += 1
   }
-
-  const projects = db.prepare(`SELECT id, root_path FROM projects`).all() as {
-    id: number
-    root_path: string
-  }[]
-  const delProject = db.prepare(`DELETE FROM projects WHERE id = ?`)
+  const projects = db
+    .prepare(`SELECT id, root_path FROM projects WHERE tool = ? AND archived_at IS NULL`)
+    .all(adapter.id) as { id: number; root_path: string }[]
   for (const p of projects) {
-    if (!fs.existsSync(p.root_path)) {
-      delProject.run(p.id)
-      removed += 1
-    }
+    if (fs.existsSync(p.root_path)) continue
+    if (mode === 'keep') db.prepare(`UPDATE projects SET archived_at = ? WHERE id = ?`).run(now, p.id)
+    else db.prepare(`DELETE FROM projects WHERE id = ?`).run(p.id)
+    changed += 1
   }
-  return removed
+  return changed
 }
 
-/** Index a single project directory; returns how many session files it holds. */
-export function indexProjectDir(db: DbHandle, dir: { slug: string; root: string }): number {
-  const pid = upsertProject(db, dir.slug, dir.root)
-  const files = listJsonlSessions(dir.root)
-  for (const f of files) {
-    indexSessionFileSync(db, pid, dir.root, f)
-  }
-  db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
-  return files.length
+/** A transcript file was deleted: archive or drop its session per the archive setting. */
+export function handleSessionUnlink(db: DbHandle, filePath: string, mode: ArchiveMode): boolean {
+  const row = db.prepare(`SELECT id FROM sessions WHERE file_path = ?`).get(filePath) as { id: number } | undefined
+  if (!row) return false
+  if (mode === 'keep') db.prepare(`UPDATE sessions SET archived_at = ? WHERE id = ?`).run(Date.now(), row.id)
+  else db.prepare(`DELETE FROM sessions WHERE id = ?`).run(row.id)
+  return true
 }
 
-/**
- * Index one project discovered by a tool adapter (Claude, Codex, …). Sessions are
- * parsed with the shared JSONL parser; the project row is tagged with the tool id.
- */
-export function indexAdapterProject(
+/** Index one project discovered by a tool adapter; returns how many session files it holds. */
+export async function indexAdapterProject(
   db: DbHandle,
   adapter: ToolAdapter,
-  discovered: DiscoveredProject,
-): number {
-  const pid = upsertProject(db, discovered.slug, discovered.root, {
-    tool: adapter.id,
-    displayName: discovered.displayName,
-  })
-  const files = adapter.listSessions(discovered.root)
+  project: DiscoveredProject,
+  yieldNow: Yield = noYield,
+): Promise<number> {
+  const pid = upsertProject(db, project, adapter.id)
+  const files = adapter.listSessions(project)
   for (const f of files) {
-    indexSessionFileSync(db, pid, discovered.root, f)
+    try {
+      await indexSessionFile(db, {
+        projectId: pid,
+        projectRoot: project.root,
+        filePath: f,
+        createParser: adapter.createParser,
+        appendable: adapter.appendable,
+        yieldNow,
+      })
+    } catch (err) {
+      // One unreadable file must not stop the rest of the scan.
+      console.error('[vault] failed to index', f, err)
+    }
+    await yieldNow()
   }
+  refineDisplayName(db, pid, project)
   db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
   return files.length
 }
 
-export function fullReindex(db: DbHandle, claudeRoot: string): { projects: number; sessions: number } {
-  const projects = listProjectDirs(claudeRoot)
-  let sessionCount = 0
-  for (const p of projects) {
-    sessionCount += indexProjectDir(db, p)
-  }
-  pruneMissingProjectsAndSessions(db)
-  return { projects: projects.length, sessions: sessionCount }
-}
-
-export function indexSinglePath(db: DbHandle, claudeRoot: string, absoluteFilePath: string): void {
+/** Live update for one transcript path; resolves the owning adapter and project from the path. */
+export async function indexSinglePath(
+  db: DbHandle,
+  adapters: ToolAdapter[],
+  absoluteFilePath: string,
+  yieldNow: Yield = noYield,
+): Promise<boolean> {
   const normalized = path.normalize(absoluteFilePath)
-  if (!normalized.toLowerCase().endsWith('.jsonl')) return
-  if (!normalized.includes(`${path.sep}.claude${path.sep}projects${path.sep}`)) return
-  const relFromRoot = path.relative(claudeRoot, normalized)
-  const parts = relFromRoot.split(path.sep).filter(Boolean)
-  const slug = parts[0]
-  if (!slug) return
-  const projectRoot = path.join(claudeRoot, slug)
-  if (!fs.existsSync(projectRoot)) return
-  const pid = upsertProject(db, slug, projectRoot)
-  indexSessionFileSync(db, pid, projectRoot, normalized)
-  db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
+  if (!normalized.toLowerCase().endsWith('.jsonl') || !fs.existsSync(normalized)) return false
+  for (const adapter of adapters) {
+    const project = adapter.projectForFile(normalized)
+    if (!project) continue
+    const pid = upsertProject(db, project, adapter.id)
+    const res = await indexSessionFile(db, {
+      projectId: pid,
+      projectRoot: project.root,
+      filePath: normalized,
+      createParser: adapter.createParser,
+      appendable: adapter.appendable,
+      yieldNow,
+    })
+    refineDisplayName(db, pid, project)
+    db.prepare(`UPDATE projects SET last_indexed_at = ? WHERE id = ?`).run(Date.now(), pid)
+    return res.mode !== 'skip'
+  }
+  return false
 }
