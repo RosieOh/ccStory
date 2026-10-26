@@ -1,8 +1,10 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { openVaultDb, requestFullReparse } from './db.js'
+import { BackupError, snapshot } from './backup.js'
 import { getAvailableAdapters } from './adapters.js'
 import { archiveModeOf, handleSessionUnlink, indexAdapterProject, indexSinglePath, reconcileMissing } from './indexer.js'
 import { fullReindexPlans, indexPlanSinglePath, isPathUnderPlansRoot } from './plansIndexer.js'
+import type { BackupReason } from '../shared/ipc.js'
 import type { WorkerInbound, WorkerOutbound } from './workerProtocol.js'
 
 /**
@@ -29,12 +31,23 @@ function notifyUpdated(force = false) {
   }
 }
 
-type Job = { kind: 'scan'; id: number; reparse: boolean }
+// Backups share the queue with scans: one job at a time on this connection, so a
+// snapshot never races a scan's write batches.
+type Job = { kind: 'scan'; id: number; reparse: boolean } | { kind: 'backup'; id: number; dir: string; reason: BackupReason }
 const scanQueue: Job[] = []
 const pendingPaths = new Map<string, 'add' | 'change' | 'unlink'>()
 let running = false
 
-async function runScan(job: Job) {
+function runBackup(job: Extract<Job, { kind: 'backup' }>) {
+  try {
+    post({ type: 'backupDone', id: job.id, file: snapshot(db, job.dir, job.reason) })
+  } catch (err) {
+    const code = err instanceof BackupError && err.code === 'disk' ? 'disk' : 'failed'
+    post({ type: 'backupFailed', id: job.id, code, message: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+async function runScan(job: Extract<Job, { kind: 'scan' }>) {
   if (job.reparse) requestFullReparse(db)
   const mode = archiveModeOf(db)
   const live = getAvailableAdapters()
@@ -93,6 +106,10 @@ async function pump() {
   try {
     while (scanQueue.length || pendingPaths.size) {
       const job = scanQueue.shift()
+      if (job?.kind === 'backup') {
+        runBackup(job)
+        continue
+      }
       if (job) {
         try {
           await runScan(job)
@@ -116,6 +133,10 @@ parentPort!.on('message', (m: WorkerInbound) => {
       break
     case 'paths':
       for (const e of m.events) pendingPaths.set(e.path, e.kind)
+      void pump()
+      break
+    case 'backup':
+      scanQueue.push({ kind: 'backup', id: m.id, dir: m.dir, reason: m.reason })
       void pump()
       break
     case 'close':
