@@ -255,11 +255,15 @@
     overflow: hidden;
     padding-inline: 1.75rem;
   }
+  /* The side gutter belongs to the scroller, so a .scroll-area's negative margin (kept
+     for panel shadows) stays inside it instead of adding a horizontal scrollbar. */
   .main {
     min-width: 0;
     min-height: 0;
     flex: 1;
     overflow: auto;
+    margin-inline: -0.75rem;
+    padding-inline: 0.75rem;
   }
   .page {
     display: flex;
