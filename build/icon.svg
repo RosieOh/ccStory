@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- ccStory app icon: the rail's brand mark (vault glyph on the brand gradient)
+  <!-- Trove app icon: the rail's brand mark (vault glyph on the brand gradient)
        on the macOS icon grid — 824px body in a 1024px canvas, room for the shadow.
        Regenerate the PNG/ICNS/ICO with `scripts/build-icons.sh`. -->
   <defs>
