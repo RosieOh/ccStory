@@ -1,7 +1,7 @@
 {
   "name": "trove",
   "productName": "Trove",
-  "version": "0.6.0-beta.2",
+  "version": "0.6.0-beta.3",
   "author": "Trove contributors",
   "description": "Local search and archive for your Claude Code history",
   "license": "MIT",
