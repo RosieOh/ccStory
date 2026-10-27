@@ -103,7 +103,7 @@ else {
 }
 
 /** Product name shown in window and dialog titles (package.json `productName`). */
-const APP_NAME = 'ccStory'
+const APP_NAME = 'Trove'
 
 let mainWindow: BrowserWindow | null = null
 let db: DbHandle | null = null
