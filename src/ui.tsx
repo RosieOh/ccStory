@@ -129,7 +129,7 @@ export function Rail<K extends string>({
   return (
     <aside className="rail glass" aria-label={brandLabel}>
       <div className="flex flex-col items-center gap-5">
-        <span className="brand-mark" title="ccStory" aria-hidden>
+        <span className="brand-mark" title="Trove" aria-hidden>
           <Icon name="vault" className="h-[18px] w-[18px]" />
         </span>
         <ul className="rail-list" onMouseLeave={() => setHover(null)}>
