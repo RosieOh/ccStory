@@ -1,6 +1,6 @@
 # Release process
 
-ccStory ships as signed installers attached to a **GitHub Release**, which
+Trove ships as signed installers attached to a **GitHub Release**, which
 also doubles as the [`electron-updater`](../electron/updater.ts) feed. There are
 two ways to produce a release: the automated CI pipeline (recommended) and a
 manual local build.

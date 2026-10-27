@@ -18,7 +18,7 @@ line types). A user stuck on an old build silently gets worse search and wrong s
 ## Decision
 
 - The update check is the **only** network request the app makes. It asks the GitHub
-  Releases feed (`RosieOh/ccStory`) for `latest*.yml`; the request carries the app
+  Releases feed (`RosieOh/trove`) for `latest*.yml`; the request carries the app
   version and the usual HTTP metadata (IP, user agent) and **no conversation data,
   paths, or usage**.
 - It is **on by default** in packaged, signed builds and **off-switchable** in

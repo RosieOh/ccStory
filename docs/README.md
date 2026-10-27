@@ -1,4 +1,4 @@
-# ccStory documentation
+# Trove documentation
 
 Read in this order:
 

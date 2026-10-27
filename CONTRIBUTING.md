@@ -1,6 +1,6 @@
-# Contributing to ccStory
+# Contributing to Trove
 
-Thank you for improving ccStory. This project values small, reviewable changes that match existing style.
+Thank you for improving Trove. This project values small, reviewable changes that match existing style.
 
 ## Workflow
 
