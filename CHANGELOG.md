@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Renamed to ccStory
+
+- The app is now **ccStory** (it was Claude Vault). Anthropic's guidelines do not allow
+  "Claude" or "Claude Code" in a third-party product name; saying in plain text that the
+  app works with Claude Code is fine
+  ([Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance),
+  [trademark guidelines](https://www.anthropic.com/legal/trademark-guidelines)).
+- Changed: window and dialog titles, UI copy, `productName`, `appId` (`dev.ccstory.app`),
+  installer names (`ccStory-<version>-<os>-<arch>`), README and docs, and the LICENSE
+  copyright holder. Internal names (`window.vault`, `vault.db`, `VAULT_*` variables) stay.
+- Data from the old name (`Claude Vault`, or `claude-vault` in dev mode) moves to the new
+  user data folder on first launch, once, before anything opens it.
+
 ## [0.6.0-beta.1] — 2026-10-27
 
 The first public build: an unsigned pre-release for macOS (Apple Silicon and Intel),
