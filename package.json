@@ -4,6 +4,14 @@
   "author": "Claude Vault contributors",
   "description": "Local search and reuse for Claude Code conversation history",
   "license": "MIT",
+  "homepage": "https://github.com/RosieOh/ccStory#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RosieOh/ccStory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RosieOh/ccStory/issues"
+  },
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
@@ -76,8 +84,20 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.icns",
       "hardenedRuntime": true,
