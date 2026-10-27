@@ -19,6 +19,7 @@ import { claudeHomeDir, defaultClaudePlansRoot } from './claudeRoots.js'
 import { allAdapters } from './adapters.js'
 import { archiveModeOf } from './indexer.js'
 import { BackupFailed, IndexService } from './indexService.js'
+import { migrateLegacyUserData } from './userDataMigration.js'
 import { QueryService } from './queryService.js'
 import { checkForUpdates, getUpdateStatus, initAutoUpdate, installUpdate, setAutoUpdateEnabled } from './updater.js'
 import { listPrices, resetPrices, savePrices } from './prices.js'
@@ -91,6 +92,18 @@ declare const __dirname: string
 // Test/dev override: keep the vault DB somewhere disposable instead of the real profile.
 const userDataOverride = process.env.VAULT_USER_DATA?.trim()
 if (userDataOverride && path.isAbsolute(userDataOverride)) app.setPath('userData', userDataOverride)
+else {
+  // Before anything opens the folder (single-instance lock, Chromium, the DB).
+  try {
+    const from = migrateLegacyUserData(app.getPath('appData'), app.getPath('userData'))
+    if (from) console.info(`[vault] moved user data from ${from}`)
+  } catch (err) {
+    console.error('[vault] could not move user data from the old app name:', err)
+  }
+}
+
+/** Product name shown in window and dialog titles (package.json `productName`). */
+const APP_NAME = 'ccStory'
 
 let mainWindow: BrowserWindow | null = null
 let db: DbHandle | null = null
@@ -151,7 +164,7 @@ function createWindow() {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: 'Claude Vault',
+    title: APP_NAME,
     backgroundColor: '#fafafb',
     show: false,
     webPreferences: {
@@ -710,7 +723,7 @@ function reportOpenOutcome(outcome: OpenOutcome) {
     text.replace('{file}', outcome.quarantined).replace('{from}', outcome.kind === 'recovered' ? outcome.from : '')
   void dialog.showMessageBox(mainWindow, {
     type: outcome.kind === 'recovered' ? 'info' : 'warning',
-    title: 'Claude Vault',
+    title: APP_NAME,
     message: outcome.kind === 'recovered' ? s.recovered : s.rebuilt,
     detail: fill(outcome.kind === 'recovered' ? s.recoveredDetail : s.rebuiltDetail),
     buttons: [s.continue],
@@ -724,7 +737,7 @@ function reportFatal(scope: string, err: unknown) {
     const s = MAIN_STRINGS[mainLocale()]
     dialog.showMessageBox({
       type: 'error',
-      title: 'Claude Vault',
+      title: APP_NAME,
       message: s.fatal,
       detail: `${scope}\n\n${message.slice(0, 1500)}`,
       buttons: [s.continue],
