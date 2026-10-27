@@ -97,7 +97,7 @@ const nav = (re) => page.getByRole('button', { name: re }).first().click()
 
 let failed = false
 try {
-  console.log('Claude Vault e2e smoke test')
+  console.log('ccStory e2e smoke test')
 
   await step('window opens', async () => {
     app = await _electron.launch({ executablePath: require('electron'), args, env, timeout: 60_000 })
@@ -107,7 +107,7 @@ try {
     page.on('console', (m) => m.type() === 'error' && rendererErrors.push(m.text()))
     page.on('pageerror', (e) => rendererErrors.push(`pageerror: ${e.message}`))
     await page.waitForLoadState('domcontentloaded')
-    assert.equal(await page.title(), 'Claude Vault')
+    assert.equal(await page.title(), 'ccStory')
   })
 
   await step('initial index finishes on the workers', async () => {
@@ -154,7 +154,7 @@ try {
     const p = (n) => String(n).padStart(2, '0')
     const now = new Date()
     assert.deepEqual(s.appOpenDays, [`${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`])
-    await page.locator('main').getByText(/Vault를 연 날|Days you opened Vault/).waitFor({ timeout: 5_000 })
+    await page.locator('main').getByText(/ccStory를 연 날|Days you opened ccStory/).waitFor({ timeout: 5_000 })
   })
 
   await step('plans and Codex sessions are indexed', async () => {
