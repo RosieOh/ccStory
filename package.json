@@ -1,7 +1,7 @@
 {
   "name": "ccstory",
   "productName": "ccStory",
-  "version": "0.6.0-beta.1",
+  "version": "0.6.0-beta.2",
   "author": "ccStory contributors",
   "description": "Local search and archive for your Claude Code history",
   "license": "MIT",
