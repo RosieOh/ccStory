@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0-beta.1] — 2026-10-27
+
+The first public build: an unsigned pre-release for macOS (Apple Silicon and Intel),
+Windows (x64) and Linux (x64 AppImage/deb). Everything since 0.1.0 is listed below,
+newest first. Release notes: [docs/release-notes/v0.6.0-beta.1.md](docs/release-notes/v0.6.0-beta.1.md).
+
 ### First-release readiness (v0.6.0)
 
 - README for a public release:
