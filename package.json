@@ -1,8 +1,9 @@
 {
-  "name": "claude-vault",
+  "name": "ccstory",
+  "productName": "ccStory",
   "version": "0.6.0-beta.1",
-  "author": "Claude Vault contributors",
-  "description": "Local search and reuse for Claude Code conversation history",
+  "author": "ccStory contributors",
+  "description": "Local search and archive for your Claude Code history",
   "license": "MIT",
   "homepage": "https://github.com/RosieOh/ccStory#readme",
   "repository": {
@@ -63,14 +64,14 @@
     "vitest": "^4.1.12"
   },
   "build": {
-    "appId": "dev.claudevault.app",
-    "productName": "Claude Vault",
-    "copyright": "Copyright © Claude Vault contributors",
+    "appId": "dev.ccstory.app",
+    "productName": "ccStory",
+    "copyright": "Copyright © ccStory contributors",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
-    "artifactName": "Claude-Vault-${version}-${os}-${arch}.${ext}",
+    "artifactName": "ccStory-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "asarUnpack": [
       "**/*.node"
@@ -125,7 +126,7 @@
         "deb"
       ],
       "icon": "build/icon.png",
-      "maintainer": "Claude Vault contributors"
+      "maintainer": "ccStory contributors"
     },
     "publish": [
       {
