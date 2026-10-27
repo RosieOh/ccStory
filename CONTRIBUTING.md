@@ -1,6 +1,6 @@
-# Contributing to Claude Vault
+# Contributing to ccStory
 
-Thank you for improving Claude Vault. This project values small, reviewable changes that match existing style.
+Thank you for improving ccStory. This project values small, reviewable changes that match existing style.
 
 ## Workflow
 

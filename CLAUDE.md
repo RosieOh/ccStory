@@ -1,6 +1,6 @@
 # CLAUDE.md — hints for Claude Code contributors
 
-This repository is the **Claude Vault** Electron + React app. Use this file as a quick orientation when you are the coding agent.
+This repository is the **ccStory** Electron + React app. Use this file as a quick orientation when you are the coding agent.
 
 ## Commands
 
@@ -20,7 +20,7 @@ This repository is the **Claude Vault** Electron + React app. Use this file as a
 ## Invariants
 
 - **Never write** under `~/.claude/projects/` or `~/.claude/plans/` — these hold the user's
-  transcripts and plans; Vault only ever reads them. The app itself writes nowhere under
+  transcripts and plans; ccStory only ever reads them. The app itself writes nowhere under
   `~/.claude/` at all. User-installed tooling (e.g. the `/ingest` skill in `~/.claude/skills/`)
   may write outside those two roots when the user asks for it — see [ADR-0004](docs/decisions/0004-write-scope-under-claude-home.md).
   That includes `mkdir`: a missing root is polled, never created.

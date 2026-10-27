@@ -9,7 +9,7 @@
 The owner's other tools share one visual language: translucent glass panels over a soft
 lit space, a floating icon rail, a large page header with a status pill, stat cards
 with light numerals, pill buttons and segmented controls, a single blue accent, the
-Pretendard typeface, and plain, polite Korean copy (해요체). Claude Vault looked
+Pretendard typeface, and plain, polite Korean copy (해요체). ccStory looked
 unrelated to all of them. Recurring preferences across those projects also apply here:
 nothing that looks AI-generated, no emoji or decorative gradients on text, rows rather
 than card grids, and screens checked by looking at them, not only by tests.

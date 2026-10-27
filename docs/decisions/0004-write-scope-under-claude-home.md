@@ -9,7 +9,7 @@
 
 > **Never write** under `~/.claude/` — read-only indexing only.
 
-The intent was always about **data safety**: Claude Vault indexes transcripts it
+The intent was always about **data safety**: ccStory indexes transcripts it
 does not own, and a bug in the indexer must never corrupt or delete a user's
 conversation history. Read-only access to the indexed data makes that failure
 mode structurally impossible.
@@ -38,11 +38,11 @@ at risk.
 Narrow the invariant to the **indexed roots** rather than all of `~/.claude/`:
 
 > **Never write** under `~/.claude/projects/` or `~/.claude/plans/` — these hold
-> the user's transcripts and plans, and Vault only ever reads them.
+> the user's transcripts and plans, and ccStory only ever reads them.
 
 Consequences of the narrowing:
 
-- The **Vault application** still never writes anywhere under `~/.claude/`. This
+- The **ccStory application** still never writes anywhere under `~/.claude/`. This
   ADR does not relax anything about the app, the indexer, or the file watcher.
   Its DB stays in `app.getPath('userData')`.
 - Writes elsewhere under `~/.claude/` are permitted only for **user-installed
@@ -71,5 +71,5 @@ Consequences of the narrowing:
 **Follow-ups**
 
 - `CLAUDE.md` invariant updated to the narrowed wording.
-- If Vault ever gains a feature that writes under `~/.claude/`, it needs its own
+- If ccStory ever gains a feature that writes under `~/.claude/`, it needs its own
   ADR — this one covers user-installed tooling only.
