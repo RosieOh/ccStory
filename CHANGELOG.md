@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0-beta.3] — 2026-10-27
+
+Same app as 0.6.0-beta.2 under its final name, Trove. Release notes:
+[docs/release-notes/v0.6.0-beta.3.md](docs/release-notes/v0.6.0-beta.3.md).
+
 ### Renamed to Trove
 
 - The app and its repository are now **Trove** (`RosieOh/trove`; GitHub redirects the old
@@ -18,7 +23,9 @@ All notable changes to this project are documented in this file.
 - Data under the previous names moves on first launch, newest name first: `ccStory`, then
   `Claude Vault`, then `claude-vault`.
 
-- Fixed: when the new data folder already existed (Chromium can create it before the app
+### Fixed
+
+- When the new data folder already existed (Chromium can create it before the app
   code runs), moving data from the old name brought only the database and backups. The
   language and theme stayed behind. Now every entry the new folder lacks moves, and the
   old folder is removed once it is empty.
