@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+- Fixed: when the new data folder already existed (Chromium can create it before the app
+  code runs), moving data from the old name brought only the database and backups. The
+  language and theme stayed behind. Now every entry the new folder lacks moves, and the
+  old folder is removed once it is empty.
+
 ## [0.6.0-beta.2] — 2026-10-27
 
 Same app as 0.6.0-beta.1 under its new name. Release notes:
