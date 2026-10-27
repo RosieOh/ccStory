@@ -29,6 +29,9 @@ All notable changes to this project are documented in this file.
   no longer ship Electron's default icon.
 - CI runs the unit and DB tests on macOS, Windows and Linux (typecheck, lint and the
   bundle build once).
+- CI and release use `actions/checkout`, `actions/setup-node` and
+  `actions/upload-artifact` v7 (Node 24). Every run on v4 warned that Node 20 is
+  deprecated and that the actions were being forced onto Node 24.
 - Release dry run: `gh workflow run release.yml -f publish=never` builds the installers
   on all three OSes without creating a Release or uploading artifacts. Manual runs
   default to it.
