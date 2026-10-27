@@ -15,6 +15,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    // Playwright drivers: page.evaluate callbacks run in the renderer.
+    files: ['scripts/screenshots.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     // Node test driver whose page.evaluate callbacks run in the renderer.
     files: ['tests/e2e/**/*.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
