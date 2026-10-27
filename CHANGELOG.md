@@ -6,6 +6,16 @@ All notable changes to this project are documented in this file.
 
 ### First-release readiness (v0.6.0)
 
+- README for a public release:
+  - install steps for each OS, including how to open an unsigned build;
+  - badges, and a download link to Releases;
+  - screenshots in light and dark.
+- The screenshots come from a synthetic demo history (`scripts/demo-corpus.mjs`, seeded)
+  and are regenerated with `node scripts/screenshots.mjs`. A real history must never
+  appear in this public README.
+- Installer file names have no spaces (`Claude-Vault-<version>-<os>-<arch>`). GitHub
+  turned the space into a dot, so the documented names did not match the downloads.
+- English transcript note reads "Hidden: 10 tool calls/results" (was "10 tool hidden").
 - Cost: the OpenAI models Codex CLI uses are priced (standard tier, ≤272K-token prompts,
   from developers.openai.com as of 2026-10-27, shown next to the Claude table date).
   Cached input has its own rate, and cache writes use the 30-minute rate where one is
