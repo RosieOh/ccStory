@@ -2,11 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /**
- * Names this app had before, as Electron derives the user data folder from them: the
- * packaged "Claude Vault" and the dev-mode package name. Renamed to ccStory because
- * Anthropic's guidelines bar "Claude" in third-party product names.
+ * Names this app had before, newest first, as Electron derives the user data folder from
+ * them: ccStory (0.6.0-beta.2), the packaged "Claude Vault" and its dev-mode package name.
+ * "Claude Vault" was dropped because Anthropic's guidelines bar "Claude" in third-party
+ * product names; Trove also avoids the "cc" reference.
  */
-export const LEGACY_APP_NAMES = ['Claude Vault', 'claude-vault']
+export const LEGACY_APP_NAMES = ['ccStory', 'Claude Vault', 'claude-vault']
 
 /**
  * Moves an older name's user data (vault DB, its WAL, backups, Chromium state) into
