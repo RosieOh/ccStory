@@ -33,17 +33,33 @@ describe('migrateLegacyUserData', () => {
     expect(fs.existsSync(path.join(root, 'Claude Vault'))).toBe(false)
   })
 
-  it('moves only the vault files into a new folder that already exists without a DB', () => {
+  it('fills a new folder that already exists without a DB, keeping what it has', () => {
     const root = appData()
     put(path.join(root, 'claude-vault', 'vault.db'), 'dev-db')
     put(path.join(root, 'claude-vault', 'vault.db-wal'), 'wal')
-    put(path.join(root, 'claude-vault', 'Preferences'))
+    put(path.join(root, 'claude-vault', 'Local Storage', 'leveldb', '000003.log'), 'locale=en')
+    put(path.join(root, 'claude-vault', 'DevToolsActivePort'), 'old')
     const target = path.join(root, 'ccStory')
-    put(path.join(target, 'Preferences'), 'new')
+    // Chromium created this before the app's code ran (seen with remote debugging).
+    put(path.join(target, 'DevToolsActivePort'), 'new')
     expect(migrateLegacyUserData(root, target)).toBe(path.join(root, 'claude-vault'))
     expect(fs.readFileSync(path.join(target, 'vault.db'), 'utf8')).toBe('dev-db')
     expect(fs.readFileSync(path.join(target, 'vault.db-wal'), 'utf8')).toBe('wal')
-    expect(fs.readFileSync(path.join(target, 'Preferences'), 'utf8')).toBe('new')
+    // Language and theme live in Local Storage: they come along too.
+    expect(fs.readFileSync(path.join(target, 'Local Storage', 'leveldb', '000003.log'), 'utf8')).toBe('locale=en')
+    expect(fs.readFileSync(path.join(target, 'DevToolsActivePort'), 'utf8')).toBe('new')
+    // Only the colliding entry is left behind, so the old folder stays (not deleted).
+    expect(fs.readdirSync(path.join(root, 'claude-vault'))).toEqual(['DevToolsActivePort'])
+  })
+
+  it('removes the old folder once everything has moved into an existing new one', () => {
+    const root = appData()
+    put(path.join(root, 'Claude Vault', 'vault.db'), 'db')
+    const target = path.join(root, 'ccStory')
+    fs.mkdirSync(target)
+    migrateLegacyUserData(root, target)
+    expect(fs.existsSync(path.join(root, 'Claude Vault'))).toBe(false)
+    expect(fs.readFileSync(path.join(target, 'vault.db'), 'utf8')).toBe('db')
   })
 
   it('never touches a new folder that already has a vault DB, and prefers the packaged name', () => {
