@@ -12,7 +12,7 @@ import type { SearchFilters } from '../shared/ipc.js'
 
 const candidates = [
   process.argv[2],
-  path.join(os.homedir(), 'Library', 'Application Support', 'Claude Vault', 'vault.db'),
+  path.join(os.homedir(), 'Library', 'Application Support', 'ccStory', 'vault.db'),
   path.join(os.homedir(), 'Library', 'Application Support', 'claude-vault', 'vault.db'),
 ].filter((p): p is string => Boolean(p))
 const dbFile = candidates.find((p) => fs.existsSync(p))

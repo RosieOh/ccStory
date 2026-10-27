@@ -100,7 +100,7 @@ jobs:
         if: matrix.platform == 'mac'
         shell: bash
         run: |
-          for app in release/mac*/"Claude Vault.app"; do
+          for app in release/mac*/"ccStory.app"; do
             codesign --verify --deep --strict --verbose=2 "$app"
             marker=$(node -e "const a=require('@electron/asar');console.log(JSON.parse(a.extractFile(process.argv[1],'package.json').toString()).vault?.unsignedMac===true)" "$app/Contents/Resources/app.asar")
             echo "$app: unsignedMac=$marker"
