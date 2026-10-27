@@ -25,7 +25,7 @@ describe('migrateLegacyUserData', () => {
     put(path.join(root, 'Claude Vault', 'vault.db'), 'db')
     put(path.join(root, 'Claude Vault', 'backups', 'vault-20261027-000000-daily.db'))
     put(path.join(root, 'Claude Vault', 'Local Storage', 'leveldb', 'x'))
-    const target = path.join(root, 'ccStory')
+    const target = path.join(root, 'Trove')
     expect(migrateLegacyUserData(root, target)).toBe(path.join(root, 'Claude Vault'))
     expect(fs.readFileSync(path.join(target, 'vault.db'), 'utf8')).toBe('db')
     expect(fs.existsSync(path.join(target, 'backups', 'vault-20261027-000000-daily.db'))).toBe(true)
@@ -39,7 +39,7 @@ describe('migrateLegacyUserData', () => {
     put(path.join(root, 'claude-vault', 'vault.db-wal'), 'wal')
     put(path.join(root, 'claude-vault', 'Local Storage', 'leveldb', '000003.log'), 'locale=en')
     put(path.join(root, 'claude-vault', 'DevToolsActivePort'), 'old')
-    const target = path.join(root, 'ccStory')
+    const target = path.join(root, 'Trove')
     // Chromium created this before the app's code ran (seen with remote debugging).
     put(path.join(target, 'DevToolsActivePort'), 'new')
     expect(migrateLegacyUserData(root, target)).toBe(path.join(root, 'claude-vault'))
@@ -55,7 +55,7 @@ describe('migrateLegacyUserData', () => {
   it('removes the old folder once everything has moved into an existing new one', () => {
     const root = appData()
     put(path.join(root, 'Claude Vault', 'vault.db'), 'db')
-    const target = path.join(root, 'ccStory')
+    const target = path.join(root, 'Trove')
     fs.mkdirSync(target)
     migrateLegacyUserData(root, target)
     expect(fs.existsSync(path.join(root, 'Claude Vault'))).toBe(false)
@@ -65,20 +65,30 @@ describe('migrateLegacyUserData', () => {
   it('never touches a new folder that already has a vault DB, and prefers the packaged name', () => {
     const root = appData()
     put(path.join(root, 'Claude Vault', 'vault.db'), 'old')
-    put(path.join(root, 'ccStory', 'vault.db'), 'current')
-    expect(migrateLegacyUserData(root, path.join(root, 'ccStory'))).toBeNull()
-    expect(fs.readFileSync(path.join(root, 'ccStory', 'vault.db'), 'utf8')).toBe('current')
+    put(path.join(root, 'Trove', 'vault.db'), 'current')
+    expect(migrateLegacyUserData(root, path.join(root, 'Trove'))).toBeNull()
+    expect(fs.readFileSync(path.join(root, 'Trove', 'vault.db'), 'utf8')).toBe('current')
 
     const other = appData()
     put(path.join(other, 'Claude Vault', 'vault.db'), 'packaged')
     put(path.join(other, 'claude-vault', 'vault.db'), 'dev')
-    migrateLegacyUserData(other, path.join(other, 'ccStory'))
-    expect(fs.readFileSync(path.join(other, 'ccStory', 'vault.db'), 'utf8')).toBe('packaged')
+    migrateLegacyUserData(other, path.join(other, 'Trove'))
+    expect(fs.readFileSync(path.join(other, 'Trove', 'vault.db'), 'utf8')).toBe('packaged')
+  })
+
+  it('takes the newest old name first: ccStory over Claude Vault', () => {
+    const root = appData()
+    put(path.join(root, 'ccStory', 'vault.db'), 'beta2')
+    put(path.join(root, 'Claude Vault', 'vault.db'), 'beta1')
+    expect(migrateLegacyUserData(root, path.join(root, 'Trove'))).toBe(path.join(root, 'ccStory'))
+    expect(fs.readFileSync(path.join(root, 'Trove', 'vault.db'), 'utf8')).toBe('beta2')
+    // The older folder is left alone; nothing overwrites the data that just moved.
+    expect(fs.readFileSync(path.join(root, 'Claude Vault', 'vault.db'), 'utf8')).toBe('beta1')
   })
 
   it('returns null when there is nothing to move', () => {
     const root = appData()
     put(path.join(root, 'claude-vault', 'Preferences'))
-    expect(migrateLegacyUserData(root, path.join(root, 'ccStory'))).toBeNull()
+    expect(migrateLegacyUserData(root, path.join(root, 'Trove'))).toBeNull()
   })
 })
