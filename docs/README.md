@@ -1,4 +1,4 @@
-# Claude Vault documentation
+# ccStory documentation
 
 Read in this order:
 

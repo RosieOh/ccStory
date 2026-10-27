@@ -1,6 +1,6 @@
 # Security
 
-Claude Vault is a **local-first** desktop app: it reads Claude Code data under your home directory (see `docs/architecture.md`) and stores an index in the app’s user data folder. It never writes under `~/.claude/`. **The only network request is the update check** against GitHub Releases (app version only, no conversation data), which can be turned off in Settings — see [ADR-0005](docs/decisions/0005-update-check-network-exception.md). The renderer runs with `connect-src 'none'`.
+ccStory is a **local-first** desktop app: it reads Claude Code data under your home directory (see `docs/architecture.md`) and stores an index in the app’s user data folder. It never writes under `~/.claude/`. **The only network request is the update check** against GitHub Releases (app version only, no conversation data), which can be turned off in Settings — see [ADR-0005](docs/decisions/0005-update-check-network-exception.md). The renderer runs with `connect-src 'none'`.
 
 ## Reporting
 

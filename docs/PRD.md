@@ -1,4 +1,4 @@
-# Claude Vault — PRD
+# ccStory — PRD
 
 ## Vision
 
