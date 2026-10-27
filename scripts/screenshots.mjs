@@ -60,7 +60,7 @@ await until(
 )
 
 // A little user data so the screens look used: two favorites, two tags, and four weeks
-// of "days you opened ccStory" (written straight into the scratch DB).
+// of "days you opened Trove" (written straight into the scratch DB).
 await page.evaluate(async () => {
   const hits = (await window.vault.search({ query: 'retry', limit: 10, excludeTools: true })) ?? []
   const msgs = hits.filter((h) => h.hitType === 'message')
@@ -112,7 +112,7 @@ await page.waitForTimeout(400)
 await shot('prompts')
 
 await nav('Stats')
-await page.getByText('Days you opened ccStory').waitFor()
+await page.getByText('Days you opened Trove').waitFor()
 await shot('stats')
 await theme(true)
 await shot('stats-dark')
