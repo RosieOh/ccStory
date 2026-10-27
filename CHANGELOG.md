@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Renamed to Trove
+
+- The app and its repository are now **Trove** (`RosieOh/trove`; GitHub redirects the old
+  `RosieOh/ccStory` address). It was briefly ccStory in 0.6.0-beta.2. Like the earlier
+  rename away from Claude Vault, the new name keeps clear of Anthropic's marks, and it
+  also drops the "cc" reference.
+- Changed:
+  - window and dialog titles, and UI copy;
+  - `productName` and `appId` (`dev.trove.app`);
+  - installer names (`Trove-<version>-<os>-<arch>`) and the update feed (`publish.repo`);
+  - README, docs, issue-template links and the LICENSE copyright holder.
+- Data under the previous names moves on first launch, newest name first: `ccStory`, then
+  `Claude Vault`, then `claude-vault`.
+
 - Fixed: when the new data folder already existed (Chromium can create it before the app
   code runs), moving data from the old name brought only the database and backups. The
   language and theme stayed behind. Now every entry the new folder lacks moves, and the
