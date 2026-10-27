@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import { IPC } from '../shared/ipc.js'
 import type { UpdateStatus } from '../shared/ipc.js'
@@ -31,9 +33,28 @@ export function getUpdateStatus(): UpdateStatus {
   return status
 }
 
+/**
+ * macOS builds made without a Developer ID cannot install updates: Squirrel.Mac checks
+ * the new version's signature against the running app's, and an ad-hoc signature never
+ * matches. The release workflow marks those builds in the packaged package.json
+ * (`"vault": { "unsignedMac": true }`) so they skip the check instead of downloading a
+ * 200 MB update that then fails. Windows and Linux update fine unsigned.
+ */
+function isUnsignedMacBuild(): boolean {
+  if (process.platform !== 'darwin') return false
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')) as {
+      vault?: { unsignedMac?: unknown }
+    }
+    return pkg.vault?.unsignedMac === true
+  } catch {
+    return false
+  }
+}
+
 /** True when an update feed can actually work (packaged build with a publish config). */
 export function updatesSupported(): boolean {
-  return app.isPackaged && !process.env.VAULT_DISABLE_UPDATER
+  return app.isPackaged && !process.env.VAULT_DISABLE_UPDATER && !isUnsignedMacBuild()
 }
 
 type Updater = {
