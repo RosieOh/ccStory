@@ -10,7 +10,6 @@
 
 - 会話をインデックスし、Claude Code が古いトランスクリプトを削除した後もコピーを残します。
 - すべての履歴をミリ秒単位で検索でき（SQLite FTS5）、自分が書いたプロンプトを探して再利用できます。
-- 旧名は *Claude Vault*、次に *ccStory* でした。Anthropic のガイドラインでは他社の製品名に「Claude」を使えないため改名しました。Trove はその連想もなくした名前です。
 
 [![Release](https://img.shields.io/github/v/release/RosieOh/trove?include_prereleases&label=release)](https://github.com/RosieOh/trove/releases)
 [![CI](https://github.com/RosieOh/trove/actions/workflows/ci.yml/badge.svg)](https://github.com/RosieOh/trove/actions/workflows/ci.yml)

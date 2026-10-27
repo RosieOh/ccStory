@@ -9,7 +9,6 @@
 **Trove**는 [Claude Code](https://www.anthropic.com/claude-code) 대화 기록을 내 컴퓨터에서 보관하고 검색하는 데스크톱 앱이에요.
 - 대화를 색인하고, Claude Code가 오래된 대화 파일을 지운 뒤에도 사본을 남겨요.
 - 모든 기록을 밀리초 단위로 검색하고(SQLite FTS5), 내가 쓴 프롬프트를 다시 찾아 쓸 수 있어요.
-- 이전 이름은 *Claude Vault*, 그다음 *ccStory*였어요. Anthropic 지침상 다른 회사 제품 이름에 「Claude」를 쓸 수 없어서 바꿨고, Trove는 그 연상까지 뺀 이름이에요.
 
 [![Release](https://img.shields.io/github/v/release/RosieOh/trove?include_prereleases&label=release)](https://github.com/RosieOh/trove/releases)
 [![CI](https://github.com/RosieOh/trove/actions/workflows/ci.yml/badge.svg)](https://github.com/RosieOh/trove/actions/workflows/ci.yml)

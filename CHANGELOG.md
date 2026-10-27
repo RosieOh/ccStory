@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 ### Docs
 
 - README in Korean ([README.ko.md](README.ko.md)), Japanese ([README.ja.md](README.ja.md)) and Simplified Chinese ([README.zh-CN.md](README.zh-CN.md)), with a language switcher at the top of each. The English README stays canonical.
+- The READMEs no longer explain the earlier names (Claude Vault, ccStory); that history stays in this changelog.
 
 ## [0.6.0-beta.3] — 2026-10-27
 
