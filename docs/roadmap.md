@@ -2,8 +2,10 @@
 
 ## Status (2026-10-27)
 
-**v0.6.0-beta.1 (2026-10-27) is the first public build**: an unsigned GitHub pre-release
-for macOS (Apple Silicon, Intel), Windows and Linux. Milestones v0.2.0–v0.3.2 were
+**v0.6.0-beta.1 (2026-10-27) was the first public build**: an unsigned GitHub pre-release
+for macOS (Apple Silicon, Intel), Windows and Linux. **v0.6.0-beta.2** followed the same
+day under the new name **ccStory**: Anthropic's guidelines keep "Claude" out of
+third-party product names. Milestones v0.2.0–v0.3.2 were
 development batches. v0.4.0 fixes the problems a real-corpus audit found — lost
 favorites, a frozen window during active sessions, ~2× inflated token counts, no
 pricing for current models, and the app discarding history Claude Code deletes — and
@@ -26,6 +28,7 @@ See [CHANGELOG.md](../CHANGELOG.md).
 | v0.5.0 — glass UI | One visual language with the owner's other tools; AA contrast in both themes | Done |
 | v0.5.1 — durability | A supported runtime; backups and recovery for the only copy of archived history | Done |
 | v0.6.0-beta.1 — first public build | A build other people can install | Published as an unsigned pre-release (2026-10-27) |
+| v0.6.0-beta.2 — renamed to ccStory | The same build under a name that follows Anthropic's trademark guidelines | Published as an unsigned pre-release (2026-10-27) |
 | Signed release | Developer ID + notarization, Windows certificate, Homebrew cask | When ~3 people outside the owner install it and come back (step 3 below) |
 | Later | Only what users ask for | — |
 
