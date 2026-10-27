@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Docs
+
+- README in Korean ([README.ko.md](README.ko.md)), Japanese ([README.ja.md](README.ja.md)) and Simplified Chinese ([README.zh-CN.md](README.zh-CN.md)), with a language switcher at the top of each. The English README stays canonical.
+
 ## [0.6.0-beta.3] — 2026-10-27
 
 Same app as 0.6.0-beta.2 under its final name, Trove. Release notes:

@@ -2,6 +2,8 @@
 
 # Trove
 
+**English** · [한국어](README.ko.md) · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
+
 **Trove** is a local-first desktop app for your [Claude Code](https://www.anthropic.com/claude-code) history (formerly *Claude Vault*, then *ccStory*: Anthropic's guidelines keep "Claude" out of third-party product names, and Trove drops the reference altogether). It indexes your conversations and keeps them even after Claude Code deletes old transcripts. Everything is searchable in milliseconds (SQLite FTS5), and you can find and reuse your own prompts.
 
 [![Release](https://img.shields.io/github/v/release/RosieOh/trove?include_prereleases&label=release)](https://github.com/RosieOh/trove/releases)

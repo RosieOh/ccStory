@@ -15,6 +15,7 @@ Thank you for improving Trove. This project values small, reviewable changes tha
 - **GitHub Issues** — bugs, feature discussion, questions, long threads.
 - **`docs/decisions/`** — ADRs for architectural choices (new DB tables, IPC shape, indexing strategy).
 - **`docs/issue-decisions.md`** — one-line outcomes that must survive Issue closure (with Issue link).
+- **README translations** — `README.ko.md`, `README.ja.md` and `README.zh-CN.md` follow `README.md`, which is canonical. When you change the README, update the translations in the same PR, or open an Issue for the ones you can't write.
 
 ## Local setup
 
@@ -49,6 +50,7 @@ Don't animate anything behind the glass continuously: measure idle CPU if you ad
 - [ ] `npm test` passes for logic changes in `shared/`, `electron/search`, or `electron/ipcGuards`.
 - [ ] `npm run test:db` passes for changes to indexing, the schema, search SQL, or queries.
 - [ ] User-visible strings added to both `ko` and `en` in `shared/i18n.ts`.
+- [ ] README changes mirrored in `README.ko.md`, `README.ja.md` and `README.zh-CN.md` (or an Issue opened).
 - [ ] Linked Issue or ADR where applicable.
 
 ## Code of conduct
