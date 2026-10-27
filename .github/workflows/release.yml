@@ -71,8 +71,18 @@ jobs:
           for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             [ -n "${!v}" ] || unset "$v"
           done
-          [ -n "${CSC_LINK:-}" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
-          npx electron-builder --${{ matrix.platform }} --publish ${{ github.event_name == 'push' && 'always' || inputs.publish }}
+          extra=''
+          if [ -z "${CSC_LINK:-}" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            # Without a Developer ID the bundle still needs a valid (ad-hoc) signature:
+            # Electron's leftover linker signature makes a downloaded app "damaged", with
+            # no way to open it. Ad-hoc code has no team ID, so it also needs
+            # entitlements.mac.adhoc.plist (library validation off) or it will not start.
+            if [ "${{ matrix.platform }}" = mac ]; then
+              extra='-c.mac.identity=- -c.mac.entitlements=build/entitlements.mac.adhoc.plist -c.mac.entitlementsInherit=build/entitlements.mac.adhoc.plist'
+            fi
+          fi
+          npx electron-builder --${{ matrix.platform }} --publish ${{ github.event_name == 'push' && 'always' || inputs.publish }} $extra
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS: Developer ID cert + notarization (Apple Developer Program).
@@ -81,6 +91,15 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # A broken bundle signature is invisible until someone downloads the app.
+      - name: Verify macOS code signatures
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          for app in release/mac*/"Claude Vault.app"; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+          done
 
       - name: List installers
         shell: bash
