@@ -4,7 +4,7 @@
 
 **v0.6.0-beta.1 (2026-10-27) was the first public build**: an unsigned GitHub pre-release
 for macOS (Apple Silicon, Intel), Windows and Linux. **v0.6.0-beta.2** followed the same
-day under the new name **ccStory**: Anthropic's guidelines keep "Claude" out of
+day as **ccStory**: Anthropic's guidelines keep "Claude" out of
 third-party product names. Milestones v0.2.0–v0.3.2 were
 development batches. v0.4.0 fixes the problems a real-corpus audit found — lost
 favorites, a frozen window during active sessions, ~2× inflated token counts, no
@@ -56,8 +56,8 @@ Recommended path: **decide with data after four weeks of dogfooding, and validat
 with a free step before paying for signing.**
 
 1. **Weeks 1–4 — personal tool.** Use the current build daily. Go/no-go criteria:
-   - you opened it on ≥3 days a week (Stats → "Days you opened ccStory" shows each of the last
-     four weeks; prompts-per-day measures Claude Code, not ccStory);
+   - you opened it on ≥3 days a week (Stats → "Days you opened Trove" shows each of the last
+     four weeks; prompts-per-day measures Claude Code, not Trove);
    - it answered at least one "how did I do X?" you could not have answered otherwise
      (e.g. from an archived session);
    - no lost favorites, no frozen window, no wrong numbers on your corpus.
