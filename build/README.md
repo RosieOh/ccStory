@@ -26,6 +26,17 @@ Unsigned builds trigger **macOS Gatekeeper** and **Windows SmartScreen** warning
 which is the single biggest blocker to distributing this outside your own machine.
 `electron-builder` reads credentials from the environment — never commit them.
 
+**Without secrets** (the release workflow today), macOS builds are **ad-hoc signed**
+(`-c.mac.identity=-`) with `entitlements.mac.adhoc.plist`. Two things go wrong otherwise:
+
+- Electron's leftover linker signature makes a downloaded app "damaged", with no way to
+  open it.
+- Under the hardened runtime, ad-hoc code (no team ID) fails library validation and the
+  app does not start.
+
+The workflow checks every bundle with `codesign --verify --deep --strict`. With a
+Developer ID, `entitlements.mac.plist` (library validation on) is used as configured.
+
 **macOS** (Apple Developer Program, ~$99/yr). `notarize: true` is already set:
 
 ```bash
