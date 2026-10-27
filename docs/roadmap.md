@@ -2,8 +2,9 @@
 
 ## Status (2026-10-27)
 
-No build has been released yet (no tag, no GitHub Release); milestones v0.2.0–v0.3.2
-were development batches. v0.4.0 fixes the problems a real-corpus audit found — lost
+**v0.6.0-beta.1 (2026-10-27) is the first public build**: an unsigned GitHub pre-release
+for macOS (Apple Silicon, Intel), Windows and Linux. Milestones v0.2.0–v0.3.2 were
+development batches. v0.4.0 fixes the problems a real-corpus audit found — lost
 favorites, a frozen window during active sessions, ~2× inflated token counts, no
 pricing for current models, and the app discarding history Claude Code deletes — and
 adds the prompts view, tag filtering, archive mode and Settings; v0.4.1 tightens prompt,
@@ -24,25 +25,30 @@ See [CHANGELOG.md](../CHANGELOG.md).
 | v0.4.1 — accuracy | Prompt detection, file history and stats follow-ups found while measuring | Done |
 | v0.5.0 — glass UI | One visual language with the owner's other tools; AA contrast in both themes | Done |
 | v0.5.1 — durability | A supported runtime; backups and recovery for the only copy of archived history | Done |
-| First release (v0.6.0) | A build other people can install | Ready to tag (the dry run packages all three OSes); blocked on the distribution decision below |
-| Later | Only what dogfooding or real users ask for | — |
+| v0.6.0-beta.1 — first public build | A build other people can install | Published as an unsigned pre-release (2026-10-27) |
+| Signed release | Developer ID + notarization, Windows certificate, Homebrew cask | When ~3 people outside the owner install it and come back (step 3 below) |
+| Later | Only what users ask for | — |
 
 ### First-release checklist (whichever distribution path is chosen)
 
 - [x] App icons in `build/` (`icon.icns`, `icon.ico`, `icon.png`, generated from `icon.svg`).
 - [x] Release dry run packages macOS, Windows and Linux (`gh workflow run release.yml -f publish=never`).
 - [x] End-to-end smoke test passes on all three (`npm run test:e2e`, in CI).
-- [ ] Version bump + tag (`npm version minor`) — triggers `.github/workflows/release.yml`.
-- [ ] Release notes from CHANGELOG `[Unreleased]`.
-- [ ] Signing secrets (only on the public path, see below).
+- [x] Version bump + tag (`npm version 0.6.0-beta.1`, tag `v0.6.0-beta.1`) — triggers `.github/workflows/release.yml`.
+- [x] Release notes from CHANGELOG (`docs/release-notes/v0.6.0-beta.1.md`).
+- [x] macOS builds open after download (ad-hoc signed, verified in the workflow), Intel and Apple Silicon.
+- [ ] Signing secrets — deferred to step 3 below.
 
-## Open decision: personal tool or public OSS?
+## Decision: public (2026-10-27)
 
-The repository is already public; the real question is **how much to invest in
-distribution** — signing ($99/yr Apple Developer Program, Windows certificate), support,
-Homebrew, testing on Windows/Linux. The work above is the same either way, so
-nothing is blocked on deciding now.
+The owner decided to go public without waiting for the four weeks of dogfooding below.
+**Step 2, the free unsigned pre-release, is taken now** (v0.6.0-beta.1). The four-week
+measure still matters: together with outside interest, it decides step 3, which is
+paying for signing.
 
+The original reasoning, kept for reference: the repository was already public, so the
+real question was **how much to invest in distribution** — signing ($99/yr Apple
+Developer Program, Windows certificate), support, Homebrew, testing on Windows/Linux.
 Recommended path: **decide with data after four weeks of dogfooding, and validate demand
 with a free step before paying for signing.**
 
@@ -52,9 +58,10 @@ with a free step before paying for signing.**
    - it answered at least one "how did I do X?" you could not have answered otherwise
      (e.g. from an archived session);
    - no lost favorites, no frozen window, no wrong numbers on your corpus.
-2. **If go — unsigned pre-release (free).** Publish `v0.6.0-beta` as a GitHub
-   *pre-release* with "right-click → Open" install notes. No Homebrew, no auto-update
-   (it requires signing anyway). Share it in one or two places Claude Code users read.
+2. **If go — unsigned pre-release (free).** *Done: `v0.6.0-beta.1`.* A GitHub
+   *pre-release* with "Privacy & Security → Open Anyway" install notes. No Homebrew, and
+   no auto-update on macOS (that needs signing). Share it in one or two places Claude
+   Code users read.
 3. **Public OSS (paid) only if** at least ~3 people outside you install it and come back,
    or open issues. Then buy signing, add the secrets, submit the Homebrew cask.
 4. **If no-go** — keep it a personal tool: drop the release pipeline and Homebrew notes,
