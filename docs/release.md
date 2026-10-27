@@ -8,7 +8,8 @@ manual local build.
 ## Automated release (recommended)
 
 Pushing a `v*` tag triggers [`.github/workflows/release.yml`](../.github/workflows/release.yml),
-which builds on `macos-latest`, `windows-latest`, and `ubuntu-latest` in parallel
+which builds on `macos-latest` (Apple Silicon and Intel `dmg`/`zip`), `windows-latest` (x64 NSIS) and
+`ubuntu-latest` (x64 AppImage/deb) in parallel
 and publishes every artifact to a single GitHub Release.
 
 ```bash
