@@ -29,6 +29,19 @@ The Release is created as a **draft**; review it and hit publish. `latest-mac.ym
 / `latest.yml` must be attached (they are, by the step above) or auto-update
 won't see the new version.
 
+### Pre-releases
+
+A version with a pre-release part (`npm version 0.6.0-beta.1`) is published the same way.
+electron-builder creates the GitHub Release as a **draft**. Once all three jobs have
+uploaded, add the notes and publish it as a pre-release:
+
+```bash
+gh release edit v0.6.0-beta.1 --prerelease --draft=false \
+  --notes-file docs/release-notes/v0.6.0-beta.1.md
+```
+
+Keep the notes in `docs/release-notes/` so every release's text is in the repository.
+
 ### Dry run
 
 Before tagging, check that all three platforms still package:
