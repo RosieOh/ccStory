@@ -29,6 +29,12 @@ All notable changes to this project are documented in this file.
   no longer ship Electron's default icon.
 - CI runs the unit and DB tests on macOS, Windows and Linux (typecheck, lint and the
   bundle build once).
+- Fixed: macOS builds made without a Developer ID were "damaged" once downloaded. Only
+  Electron's linker signature was left, so Gatekeeper rejected the bundle outright.
+  They are now ad-hoc signed and get `disable-library-validation` (only those builds).
+  Without it, the hardened runtime refuses Electron's framework and the app does not
+  start. Gatekeeper now shows the normal "Open Anyway" path, and the release workflow
+  verifies each bundle's signature.
 - macOS installers for Intel (x64) as well as Apple Silicon (`dmg` and `zip` each). better-sqlite3's
   `darwin-x64` prebuild needs no rebuild; the x64 app was run under Rosetta (index, search, backup).
 - `package.json` has `repository`, `homepage` and `bugs`.
