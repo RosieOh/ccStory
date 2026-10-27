@@ -29,6 +29,9 @@ All notable changes to this project are documented in this file.
   no longer ship Electron's default icon.
 - CI runs the unit and DB tests on macOS, Windows and Linux (typecheck, lint and the
   bundle build once).
+- macOS installers for Intel (x64) as well as Apple Silicon (`dmg` and `zip` each). better-sqlite3's
+  `darwin-x64` prebuild needs no rebuild; the x64 app was run under Rosetta (index, search, backup).
+- `package.json` has `repository`, `homepage` and `bugs`.
 - CI and release use `actions/checkout`, `actions/setup-node` and
   `actions/upload-artifact` v7 (Node 24). Every run on v4 warned that Node 20 is
   deprecated and that the actions were being forced onto Node 24.
