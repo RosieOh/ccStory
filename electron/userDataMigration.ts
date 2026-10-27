@@ -8,8 +8,6 @@ import path from 'node:path'
  */
 export const LEGACY_APP_NAMES = ['Claude Vault', 'claude-vault']
 
-const VAULT_ENTRIES = ['vault.db', 'vault.db-wal', 'vault.db-shm', 'backups']
-
 /**
  * Moves an older name's user data (vault DB, its WAL, backups, Chromium state) into
  * `target`, once, before anything opens it — in Keep mode that DB is the only copy of
@@ -25,12 +23,15 @@ export function migrateLegacyUserData(appData: string, target: string, legacyNam
       fs.renameSync(from, target)
       return from
     }
-    // The new folder exists without a DB (e.g. a first launch created it): move only the
-    // vault files and leave the rest of the old folder for the user to delete.
-    for (const entry of VAULT_ENTRIES) {
-      const src = path.join(from, entry)
-      if (fs.existsSync(src)) fs.renameSync(src, path.join(target, entry))
+    // The new folder exists without a DB: Chromium can create it before this runs (e.g.
+    // DevToolsActivePort with remote debugging). Move every entry it does not have yet —
+    // the vault files, and Local Storage with the language and theme — then drop the old
+    // folder if nothing is left in it.
+    for (const entry of fs.readdirSync(from)) {
+      const dest = path.join(target, entry)
+      if (!fs.existsSync(dest)) fs.renameSync(path.join(from, entry), dest)
     }
+    if (fs.readdirSync(from).length === 0) fs.rmdirSync(from)
     return from
   }
   return null
