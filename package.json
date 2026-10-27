@@ -70,7 +70,7 @@
       "output": "release",
       "buildResources": "build"
     },
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Claude-Vault-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "asarUnpack": [
       "**/*.node"
