@@ -5,7 +5,8 @@
 **v0.6.0-beta.1 (2026-10-27) was the first public build**: an unsigned GitHub pre-release
 for macOS (Apple Silicon, Intel), Windows and Linux. **v0.6.0-beta.2** followed the same
 day as **ccStory**: Anthropic's guidelines keep "Claude" out of
-third-party product names. Milestones v0.2.0–v0.3.2 were
+third-party product names. **v0.6.0-beta.3** gave it its final name, **Trove**, which also
+drops the "cc" reference. Milestones v0.2.0–v0.3.2 were
 development batches. v0.4.0 fixes the problems a real-corpus audit found — lost
 favorites, a frozen window during active sessions, ~2× inflated token counts, no
 pricing for current models, and the app discarding history Claude Code deletes — and
@@ -29,6 +30,7 @@ See [CHANGELOG.md](../CHANGELOG.md).
 | v0.5.1 — durability | A supported runtime; backups and recovery for the only copy of archived history | Done |
 | v0.6.0-beta.1 — first public build | A build other people can install | Published as an unsigned pre-release (2026-10-27) |
 | v0.6.0-beta.2 — renamed to ccStory | The same build under a name that follows Anthropic's trademark guidelines | Published as an unsigned pre-release (2026-10-27) |
+| v0.6.0-beta.3 — renamed to Trove | The final name, without the "cc" reference; repository moved to `RosieOh/trove` | Published as an unsigned pre-release (2026-10-27) |
 | Signed release | Developer ID + notarization, Windows certificate, Homebrew cask | When ~3 people outside the owner install it and come back (step 3 below) |
 | Later | Only what users ask for | — |
 
