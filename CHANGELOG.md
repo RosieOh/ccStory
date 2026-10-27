@@ -39,6 +39,11 @@ All notable changes to this project are documented in this file.
   no longer ship Electron's default icon.
 - CI runs the unit and DB tests on macOS, Windows and Linux (typecheck, lint and the
   bundle build once).
+- Fixed: unsigned macOS builds checked for updates and would download a new version that
+  Squirrel.Mac then refuses to install. The release workflow now marks those builds
+  (`vault.unsignedMac` in the packaged `package.json`, verified in the workflow), and the
+  app reports updates as unavailable, as Settings already said. Windows and Linux builds
+  still update themselves.
 - Fixed: macOS builds made without a Developer ID were "damaged" once downloaded. Only
   Electron's linker signature was left, so Gatekeeper rejected the bundle outright.
   They are now ad-hoc signed and get `disable-library-validation` (only those builds).
