@@ -1,24 +1,65 @@
+<p align="center"><img src="build/icon.png" width="96" height="96" alt=""></p>
+
 # Claude Vault
 
-**Claude Vault** is a local-first desktop app that indexes your [Claude Code](https://www.anthropic.com/claude-code) conversation history, keeps it even after Claude Code deletes old transcripts, makes it searchable (SQLite **FTS5**), and helps you **reuse** your own prompts.
+**Claude Vault** is a local-first desktop app for your [Claude Code](https://www.anthropic.com/claude-code) history. It indexes your conversations and keeps them even after Claude Code deletes old transcripts. Everything is searchable in milliseconds (SQLite FTS5), and you can find and reuse your own prompts.
 
-- **OS:** macOS first (Electron); `electron-builder` also targets Windows (NSIS) and Linux (AppImage/deb). Path logic works cross-platform; Windows/Linux are less battle-tested.
-- **Privacy:** Claude's files are read-only — the app never writes under `~/.claude/`. The index and its backups live in a local SQLite DB under your user data directory. To measure its own usefulness, Vault records the *dates* you opened it (no times, no content) in that DB for the Stats tab; nothing leaves the machine. The only network request is an update check against GitHub Releases, which sends no conversation data and can be turned off in **Settings** ([ADR-0005](docs/decisions/0005-update-check-network-exception.md)).
-- **License:** MIT — see [LICENSE](LICENSE).
+[![Release](https://img.shields.io/github/v/release/RosieOh/ccStory?include_prereleases&label=release)](https://github.com/RosieOh/ccStory/releases)
+[![CI](https://github.com/RosieOh/ccStory/actions/workflows/ci.yml/badge.svg)](https://github.com/RosieOh/ccStory/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+**[Download for macOS (Apple Silicon / Intel), Windows or Linux →](https://github.com/RosieOh/ccStory/releases)**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/search-dark.png">
+  <img src="docs/images/search.png" alt="Search across every Claude Code session, with matches highlighted and filters on the side">
+</picture>
+
+- **Privacy.**
+  - Claude's files are read-only: the app never writes under `~/.claude/`.
+  - The index and its backups live in a local SQLite DB under your user data directory.
+  - To measure its own usefulness, Vault records the *dates* you opened it (no times, no content) in that DB for the Stats tab. Nothing leaves the machine.
+  - The only network request is an update check against GitHub Releases. It sends no conversation data and can be turned off in **Settings** ([ADR-0005](docs/decisions/0005-update-check-network-exception.md)).
+- **Platforms.** macOS (Apple Silicon and Intel) is the primary target. Windows and Linux builds pass the same end-to-end test in CI but see less day-to-day use.
+- **License.** MIT, see [LICENSE](LICENSE).
+
+## Install
+
+Download the file for your system from [Releases](https://github.com/RosieOh/ccStory/releases). The builds are **not code-signed yet**, so the first launch needs one extra confirmation.
+
+**macOS:** `Claude-Vault-<version>-mac-arm64.dmg` (Apple Silicon) or `…-mac-x64.dmg` (Intel).
+
+1. Open the DMG and drag **Claude Vault** to Applications.
+2. Open it once. macOS says it cannot verify the developer; click **Done**.
+3. Go to **System Settings → Privacy & Security**, scroll to "Claude Vault was blocked…" and click **Open Anyway**. On macOS 14 and earlier, right-click the app and choose **Open** instead.
+4. Alternatively, in a terminal: `xattr -dr com.apple.quarantine "/Applications/Claude Vault.app"`.
+
+Unsigned macOS builds cannot update themselves; new versions appear on the Releases page.
+
+**Windows:** run `Claude-Vault-<version>-win-x64.exe`. If SmartScreen says "Windows protected your PC", choose **More info → Run anyway**. It installs for the current user.
+
+**Linux:** use either package.
+- AppImage: `chmod +x Claude-Vault-*.AppImage && ./Claude-Vault-*.AppImage`.
+- Debian/Ubuntu: `sudo apt install ./Claude-Vault-*.deb`.
+
+**First run.** Vault reads `~/.claude/projects` and `~/.claude/plans` (and `~/.codex/sessions` if you use Codex CLI) and indexes them on a background thread, so the window stays responsive. A 5 GB history takes about a minute; after that only new lines are read. To point it elsewhere, set `CLAUDE_HOME` / `CODEX_HOME` to absolute paths.
 
 ## Screenshots
 
-> 스크린샷 PNG를 `docs/images/`에 두고 여기에 링크하면 README에서 바로 보입니다.  
-> 예: `![검색 화면](docs/images/search.png)`
+| My prompts: what you typed, most used first | Stats: tokens once per API response, cost, days you used Vault |
+|---|---|
+| ![My prompts](docs/images/prompts.png) | ![Stats](docs/images/stats.png) |
+| **Full session**: the whole conversation, tool output folded | **Dark theme** |
+| ![Session transcript](docs/images/transcript.png) | ![Stats in the dark theme](docs/images/stats-dark.png) |
+
+The screenshots use a synthetic demo history (`scripts/demo-corpus.mjs`); regenerate them with `npx vite build && node scripts/screenshots.mjs`.
 
 ## Features
 
 | Area | Status |
 |------|--------|
 | Indexing of `~/.claude/projects` (root `{uuid}.jsonl`, `subagents/`, `agent-transcripts/`, `sessions-index.json`) and `~/.claude/plans` | Yes — append-only, on a background worker |
-| **Archive**: sessions Claude Code deletes stay searchable (badged "보관됨"); purge is explicit | Yes (default on) |
+| **Archive**: sessions Claude Code deletes stay searchable (badged "Archived"); purge is explicit | Yes (default on) |
 | Full-text search + project / role / date / meta / subagents / **tool output** / **tag** filters | Yes |
 | Match modes (OR / AND / phrase), sort (relevance / newest / oldest), substring fallback for infix & CJK | Yes |
 | **My prompts**: what you typed, deduplicated, recent or most used | Yes |
@@ -39,7 +80,7 @@
 
 See the [docs/](docs/README.md) directory (PRD, architecture, ADRs, roadmap, release process).
 
-[CHANGELOG.md](CHANGELOG.md) — 변경 이력.
+[CHANGELOG.md](CHANGELOG.md) — what changed in each version.
 
 ## Development
 
@@ -48,13 +89,13 @@ npm install
 npm run dev
 ```
 
-개발 중 DevTools를 자동으로 열고 싶다면(콘솔 잡음 로그가 터미널에 보일 수 있음):
+To open DevTools automatically while developing (Chromium logs some harmless noise to the terminal):
 
 ```bash
 VAULT_OPEN_DEVTOOLS=1 npm run dev
 ```
 
-그렇지 않으면 메뉴 **보기 → 개발자 도구** 또는 macOS에서 **⌥⌘I**로 수동 실행하면 됩니다.
+Otherwise open them from **View → Developer Tools** or **⌥⌘I** on macOS. When running from a VS Code terminal or agent, unset `ELECTRON_RUN_AS_NODE` first (`env -u ELECTRON_RUN_AS_NODE npm run dev`).
 
 Other scripts:
 
@@ -77,4 +118,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and ideas go to **GitHub Is
 
 ## Disclaimer
 
-This is an independent open-source tool, not affiliated with Anthropic. It reads files already stored on your machine by Claude Code; respect your own security policies when indexing work repositories. Cost figures are estimates from logged token counts and a user-editable price table, not billing data.
+This is an independent open-source tool. It is not affiliated with or endorsed by Anthropic; "Claude" and "Claude Code" are Anthropic's trademarks, used here only to say what the app works with. It reads files already stored on your machine by Claude Code; respect your own security policies when indexing work repositories. Cost figures are estimates from logged token counts and a user-editable price table, not billing data.
