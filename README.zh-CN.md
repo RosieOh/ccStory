@@ -10,7 +10,6 @@
 
 - 它为对话建立索引，即使 Claude Code 删除了旧的对话文件，也会保留副本。
 - 所有记录都能以毫秒级速度搜索（SQLite FTS5），你也可以找回并重复使用自己写过的提示词。
-- 它曾名为 *Claude Vault*，后改名 *ccStory*。Anthropic 的指南不允许第三方产品名称中使用「Claude」，所以我们改了名；Trove 这个名字连这层联想也去掉了。
 
 [![Release](https://img.shields.io/github/v/release/RosieOh/trove?include_prereleases&label=release)](https://github.com/RosieOh/trove/releases)
 [![CI](https://github.com/RosieOh/trove/actions/workflows/ci.yml/badge.svg)](https://github.com/RosieOh/trove/actions/workflows/ci.yml)
