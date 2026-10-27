@@ -54,8 +54,10 @@ record a cache TTL, so OpenAI cache writes use the 30-minute rate.
 
 ## Platform
 
-Primary target is **macOS**. Electron and path logic should work on Windows/Linux, but
-packaging and the worker threads are not validated there yet.
+Primary target is **macOS** (Apple Silicon and Intel builds). Windows (x64) and Linux (x64
+AppImage/deb) run the end-to-end smoke test in CI and package in the release dry run, but
+day-to-day use there is far less tested. There are no Windows-on-ARM or Linux arm64
+installers.
 
 ## Running from inside VS Code
 
