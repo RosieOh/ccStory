@@ -1,17 +1,17 @@
 {
-  "name": "ccstory",
-  "productName": "ccStory",
+  "name": "trove",
+  "productName": "Trove",
   "version": "0.6.0-beta.2",
-  "author": "ccStory contributors",
+  "author": "Trove contributors",
   "description": "Local search and archive for your Claude Code history",
   "license": "MIT",
-  "homepage": "https://github.com/RosieOh/ccStory#readme",
+  "homepage": "https://github.com/RosieOh/trove#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RosieOh/ccStory.git"
+    "url": "git+https://github.com/RosieOh/trove.git"
   },
   "bugs": {
-    "url": "https://github.com/RosieOh/ccStory/issues"
+    "url": "https://github.com/RosieOh/trove/issues"
   },
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -64,14 +64,14 @@
     "vitest": "^4.1.12"
   },
   "build": {
-    "appId": "dev.ccstory.app",
-    "productName": "ccStory",
-    "copyright": "Copyright © ccStory contributors",
+    "appId": "dev.trove.app",
+    "productName": "Trove",
+    "copyright": "Copyright © Trove contributors",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
-    "artifactName": "ccStory-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Trove-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "asarUnpack": [
       "**/*.node"
@@ -126,13 +126,13 @@
         "deb"
       ],
       "icon": "build/icon.png",
-      "maintainer": "ccStory contributors"
+      "maintainer": "Trove contributors"
     },
     "publish": [
       {
         "provider": "github",
         "owner": "RosieOh",
-        "repo": "ccStory"
+        "repo": "trove"
       }
     ]
   }
