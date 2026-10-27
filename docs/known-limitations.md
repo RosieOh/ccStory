@@ -72,8 +72,11 @@ storage locations and acceptable use. This app does not reverse engineer network
 
 ## Code signing
 
-Release builds are unsigned until signing secrets exist (see `docs/release.md`); macOS
-Gatekeeper requires explicit approval, and auto-update does not work unsigned.
+Release builds have no Developer ID or Windows certificate until signing secrets exist
+(see `docs/release.md`). macOS builds are ad-hoc signed, so Gatekeeper asks once.
+Approve it in System Settings → Privacy & Security → "Open Anyway". Windows SmartScreen
+shows "More info → Run anyway". Auto-update needs a Developer ID on macOS, so there you
+download new versions by hand; Windows and Linux builds can update themselves.
 
 ## Native module
 
