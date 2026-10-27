@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0-beta.2] — 2026-10-27
+
+Same app as 0.6.0-beta.1 under its new name. Release notes:
+[docs/release-notes/v0.6.0-beta.2.md](docs/release-notes/v0.6.0-beta.2.md).
+
 ### Renamed to ccStory
 
 - The app is now **ccStory** (it was Claude Vault). Anthropic's guidelines do not allow
